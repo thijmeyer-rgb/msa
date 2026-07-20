@@ -1,0 +1,36 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:www.muziekstudioalkmaar.nl)",
+      "Bash(npm --version)",
+      "Bash(npm install *)",
+      "Bash(npm audit *)",
+      "Bash(npm ls *)",
+      "Bash(npx next *)",
+      "Bash(docker --version)",
+      "Read(//opt/homebrew/opt/**)",
+      "Bash(pg_isready)",
+      "Bash(brew --version)",
+      "Bash(node tests/verify-locking.mjs)",
+      "Bash(node tests/local-db-server.mjs)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:3000/api/admin/data)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" -u \"admin:fout\" http://localhost:3000/api/admin/data)",
+      "Bash(curl -s -u \"admin:studio-admin\" http://localhost:3000/api/admin/data)",
+      "Bash(kill %1)",
+      "Bash(pkill -f local-db-server)",
+      "Bash(rm -f tests/seed-local.mjs)",
+      "Bash(node tests/seed-token.mjs)",
+      "Bash(curl -s -o /dev/null \"http://localhost:3000/api/availability?date=2026-07-25\")",
+      "Bash(break)",
+      "Bash(curl -s \"http://localhost:3000/api/availability?date=2026-07-20\")",
+      "Bash(curl -s \"http://localhost:3000/api/availability?date=2026-07-25\")",
+      "Bash(rm -f tests/seed-sub.mjs tests/seed-token.mjs tests/seed-token2.mjs)",
+      "WebFetch(domain:booking.muziekstudioalkmaar.nl)",
+      "Bash(echo \"exit=$?\")",
+      "Bash(lsof -ti:5433)",
+      "Bash(curl -s -o /dev/null \"http://localhost:3000/api/availability?date=2026-08-01\")",
+      "Bash(xargs kill)",
+      "Bash(echo \"opgeruimd; poort 5433: $\\(lsof -ti:5433 || echo vrij\\)\")"
+    ]
+  }
+}

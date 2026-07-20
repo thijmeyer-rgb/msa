@@ -1,0 +1,364 @@
+import type { PoolClient } from "pg";
+import { withTransaction, query, isUniqueViolation } from "@/lib/db";
+import { mollie, mollieAmount } from "@/lib/mollie";
+import { sendBookingConfirmation } from "@/lib/email";
+import {
+  DAYPART_BY_ID,
+  PENDING_TTL_MINUTES,
+  STUDIO,
+  formatEuro,
+  type DaypartId,
+} from "@/lib/config";
+import { isSlotBookable } from "@/lib/availability";
+import { consumeCredits, grantCredits } from "@/lib/credits";
+
+export class SlotTakenError extends Error {
+  constructor() {
+    super("Dit dagdeel is zojuist door iemand anders geboekt.");
+    this.name = "SlotTakenError";
+  }
+}
+export class SlotNotBookableError extends Error {
+  constructor(msg = "Dit dagdeel is niet (meer) boekbaar.") {
+    super(msg);
+    this.name = "SlotNotBookableError";
+  }
+}
+
+interface CreateBookingInput {
+  date: string;
+  daypart: DaypartId;
+  name: string;
+  email: string;
+  phone: string;
+  numPeople?: number;
+}
+
+interface CreateBookingResult {
+  bookingId: string;
+  checkoutUrl: string;
+}
+
+/**
+ * Maakt een boeking aan en start de Mollie-betaling.
+ *
+ * Stappen:
+ *  1. Server-side validatie dat het slot boekbaar is (tijdvenster).
+ *  2. In één transactie: klant vinden/aanmaken + boeking als 'pending'
+ *     invoegen. De partial unique index (booking_date, daypart) garandeert
+ *     dat er maar ÉÉN actieve boeking per slot kan bestaan — bij een race
+ *     krijgt de tweede insert een unique violation → SlotTakenError.
+ *  3. Mollie-betaling aanmaken en het payment-id op de boeking zetten.
+ *
+ * Het slot is nu gereserveerd (pending) en komt automatisch vrij als de klant
+ * niet op tijd betaalt (zie expireStalePendingBookings + webhook).
+ */
+export async function createBookingAndPayment(input: CreateBookingInput): Promise<CreateBookingResult> {
+  const dp = DAYPART_BY_ID[input.daypart];
+  if (!dp) throw new SlotNotBookableError("Onbekend dagdeel.");
+
+  // 1. Validatie tijdvenster/beschikbaarheid (snelle voorcheck).
+  if (!(await isSlotBookable(input.date, input.daypart))) {
+    throw new SlotNotBookableError();
+  }
+
+  const expiresAt = new Date(Date.now() + PENDING_TTL_MINUTES * 60 * 1000);
+
+  // 2. Klant + pending boeking in één transactie.
+  const bookingId = await withTransaction(async (client: PoolClient) => {
+    const customerId = await upsertCustomer(client, input.name, input.email, input.phone);
+
+    // Geef een eventueel verlopen 'pending' voor dit slot eerst atomair vrij,
+    // zodat de partial unique index de nieuwe boeking niet onterecht blokkeert.
+    // Dit maakt correctheid onafhankelijk van de opruim-cron.
+    await client.query(
+      `UPDATE bookings SET status = 'expired', updated_at = now()
+        WHERE booking_date = $1 AND daypart = $2
+          AND status = 'pending' AND expires_at < now()`,
+      [input.date, input.daypart],
+    );
+
+    try {
+      const rows = await client.query<{ id: string }>(
+        `INSERT INTO bookings
+           (booking_date, daypart, status, customer_id, price_cents, num_people, expires_at)
+         VALUES ($1, $2, 'pending', $3, $4, $5, $6)
+         RETURNING id`,
+        [input.date, input.daypart, customerId, dp.priceCents, input.numPeople ?? null, expiresAt],
+      );
+      return rows.rows[0].id;
+    } catch (err) {
+      // Unieke-sleutel-schending = slot al door een ander vergrendeld.
+      if (isUniqueViolation(err)) throw new SlotTakenError();
+      throw err;
+    }
+  });
+
+  // 3. Mollie-betaling. Buiten de transactie (externe call).
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? "";
+  try {
+    const payment = await mollie().payments.create({
+      amount: mollieAmount(dp.priceCents),
+      description: `${STUDIO.name} — ${dp.label} ${input.date} (${formatEuro(dp.priceCents)})`,
+      redirectUrl: `${baseUrl}/boeking/${bookingId}`,
+      webhookUrl: `${baseUrl}/api/webhooks/mollie`,
+      metadata: { type: "booking", bookingId },
+    });
+
+    await query(`UPDATE bookings SET mollie_payment_id = $1, updated_at = now() WHERE id = $2`, [
+      payment.id,
+      bookingId,
+    ]);
+
+    const checkoutUrl = payment.getCheckoutUrl();
+    if (!checkoutUrl) throw new Error("Mollie gaf geen checkout-URL terug.");
+    return { bookingId, checkoutUrl };
+  } catch (err) {
+    // Betaling aanmaken mislukt: geef het slot direct weer vrij.
+    await query(
+      `UPDATE bookings SET status = 'failed', updated_at = now()
+        WHERE id = $1 AND status = 'pending'`,
+      [bookingId],
+    );
+    throw err;
+  }
+}
+
+/**
+ * Boekt een dagdeel met uren-tegoed (geen Mollie-betaling). De boeking is
+ * meteen definitief ('paid', paid_with_credit=true).
+ *
+ * In één transactie: slot vergrendelen via de unique index + credits FIFO
+ * afboeken met row-locking. Onvoldoende tegoed of bezet slot → rollback, dus
+ * er wordt niets half afgeboekt.
+ */
+export async function createBookingWithCredits(input: {
+  customerId: string;
+  date: string;
+  daypart: DaypartId;
+  numPeople?: number;
+}): Promise<{ bookingId: string }> {
+  const dp = DAYPART_BY_ID[input.daypart];
+  if (!dp) throw new SlotNotBookableError("Onbekend dagdeel.");
+  if (!(await isSlotBookable(input.date, input.daypart))) throw new SlotNotBookableError();
+
+  const minutes = dp.hours * 60;
+
+  const bookingId = await withTransaction(async (client) => {
+    // Verlopen pending voor dit slot vrijgeven (zoals bij de betaalflow).
+    await client.query(
+      `UPDATE bookings SET status = 'expired', updated_at = now()
+        WHERE booking_date = $1 AND daypart = $2 AND status = 'pending' AND expires_at < now()`,
+      [input.date, input.daypart],
+    );
+
+    let id: string;
+    try {
+      const rows = await client.query<{ id: string }>(
+        `INSERT INTO bookings
+           (booking_date, daypart, status, customer_id, price_cents, num_people,
+            paid_with_credit, credit_minutes_used)
+         VALUES ($1,$2,'paid',$3,$4,$5,true,$6)
+         RETURNING id`,
+        [input.date, input.daypart, input.customerId, dp.priceCents, input.numPeople ?? null, minutes],
+      );
+      id = rows.rows[0].id;
+    } catch (err) {
+      if (isUniqueViolation(err)) throw new SlotTakenError();
+      throw err;
+    }
+
+    // Credits afboeken (gooit InsufficientCreditsError → rollback).
+    await consumeCredits(client, input.customerId, minutes);
+    return id;
+  });
+
+  // Bevestigingsmail buiten de transactie.
+  const cust = await query<{ name: string; email: string }>(
+    `SELECT name, email FROM customers WHERE id = $1`,
+    [input.customerId],
+  );
+  if (cust[0]?.email) {
+    try {
+      await sendBookingConfirmation({
+        customerName: cust[0].name || "muzikant",
+        customerEmail: cust[0].email,
+        date: input.date,
+        daypart: input.daypart,
+        priceCents: dp.priceCents,
+        paidWithCredit: true,
+      });
+    } catch (err) {
+      console.error(`⚠️ Bevestigingsmail (tegoed) voor ${bookingId} mislukt:`, err);
+    }
+  }
+
+  return { bookingId };
+}
+
+/**
+ * Geeft bij annulering van een met-tegoed betaalde boeking de uren terug als
+ * een nieuwe refund-batch (geldig zoals de standaard pakket-geldigheid).
+ */
+export async function refundBookingCreditsIfAny(bookingId: string): Promise<void> {
+  const rows = await query<{ customer_id: string; credit_minutes_used: number; paid_with_credit: boolean }>(
+    `SELECT customer_id, credit_minutes_used, paid_with_credit FROM bookings WHERE id = $1`,
+    [bookingId],
+  );
+  const b = rows[0];
+  if (b?.paid_with_credit && b.credit_minutes_used > 0) {
+    await grantCredits(b.customer_id, b.credit_minutes_used, {
+      source: "refund",
+      note: `Terugbetaling annulering boeking ${bookingId}`,
+      createdBy: "admin",
+      validityDays: 90,
+    });
+  }
+}
+
+async function upsertCustomer(
+  client: PoolClient,
+  name: string,
+  email: string,
+  phone: string,
+): Promise<string> {
+  // Bestaande klant (op e-mail) hergebruiken en gegevens verversen.
+  const res = await client.query<{ id: string }>(
+    `INSERT INTO customers (name, email, phone)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (lower(email)) DO UPDATE
+       SET name = EXCLUDED.name, phone = EXCLUDED.phone, updated_at = now()
+     RETURNING id`,
+    [name, email, phone],
+  );
+  return res.rows[0].id;
+}
+
+// ─── Betaalstatus-afhandeling (aangeroepen vanuit de Mollie-webhook) ──────
+
+type MollieStatus = "open" | "pending" | "authorized" | "paid" | "failed" | "expired" | "canceled";
+
+/**
+ * Verwerkt de actuele betaalstatus van een boeking. Idempotent: meerdere
+ * webhook-aanroepen voor hetzelfde payment leveren hetzelfde eindresultaat.
+ *
+ * De statusovergang gebeurt met een voorwaardelijke UPDATE (WHERE status=...),
+ * zodat een dubbele aanroep niet dubbel afhandelt (bijv. de mail niet twee
+ * keer verstuurt).
+ */
+export async function handlePaymentStatus(molliePaymentId: string, status: MollieStatus): Promise<void> {
+  if (status === "paid") {
+    await markBookingPaid(molliePaymentId);
+    return;
+  }
+
+  if (status === "failed" || status === "expired" || status === "canceled") {
+    // Slot vrijgeven: alleen als de boeking nog 'pending' is.
+    await query(
+      `UPDATE bookings SET status = $2, updated_at = now()
+        WHERE mollie_payment_id = $1 AND status = 'pending'`,
+      [molliePaymentId, status],
+    );
+    return;
+  }
+
+  // open / pending / authorized: nog niets definitief, laat 'pending' staan.
+}
+
+/**
+ * Zet een boeking op 'paid' en verstuurt de bevestigingsmail — precies één keer.
+ */
+async function markBookingPaid(molliePaymentId: string): Promise<void> {
+  const result = await withTransaction(async (client) => {
+    // Vergrendel de rij zodat gelijktijdige webhooks elkaar niet in de weg zitten.
+    const rows = await client.query<{
+      id: string;
+      status: string;
+      booking_date: string;
+      daypart: DaypartId;
+      price_cents: number;
+      customer_id: string;
+    }>(
+      `SELECT id, status, booking_date, daypart, price_cents, customer_id
+         FROM bookings WHERE mollie_payment_id = $1 FOR UPDATE`,
+      [molliePaymentId],
+    );
+
+    const booking = rows.rows[0];
+    if (!booking) return null; // onbekend payment — negeren.
+
+    if (booking.status === "paid") return null; // al verwerkt — idempotent.
+
+    if (booking.status === "pending") {
+      await client.query(
+        `UPDATE bookings SET status = 'paid', expires_at = NULL, updated_at = now()
+          WHERE id = $1`,
+        [booking.id],
+      );
+      return booking;
+    }
+
+    // Rand-geval: betaling komt binnen nadat het slot al is vrijgegeven
+    // (expired/failed/canceled), bijv. klant betaalde net na de timeout.
+    // Probeer het slot te heroveren; lukt dat niet (iemand anders heeft het
+    // slot nu), dan is handmatige terugbetaling nodig.
+    try {
+      await client.query(
+        `UPDATE bookings SET status = 'paid', expires_at = NULL, updated_at = now()
+          WHERE id = $1`,
+        [booking.id],
+      );
+      return booking;
+    } catch (err) {
+      if (isUniqueViolation(err)) {
+        // Slot inmiddels door een ander bezet. Markeer voor handmatige actie.
+        await client.query(
+          `UPDATE bookings SET notes = COALESCE(notes,'') ||
+             '[LET OP: betaald na timeout, slot al bezet — terugbetaling nodig] ',
+             updated_at = now() WHERE id = $1`,
+          [booking.id],
+        );
+        console.error(
+          `⚠️ Boeking ${booking.id} betaald na timeout maar slot bezet. Handmatige terugbetaling nodig.`,
+        );
+        return null;
+      }
+      throw err;
+    }
+  });
+
+  // Buiten de transactie: bevestigingsmail, alleen bij een echte overgang.
+  if (result) {
+    const customer = await query<{ name: string; email: string }>(
+      `SELECT name, email FROM customers WHERE id = $1`,
+      [result.customer_id],
+    );
+    if (customer[0]) {
+      try {
+        await sendBookingConfirmation({
+          customerName: customer[0].name,
+          customerEmail: customer[0].email,
+          date: result.booking_date,
+          daypart: result.daypart,
+          priceCents: result.price_cents,
+        });
+      } catch (err) {
+        // Mail-fout mag de boeking niet ongedaan maken; log en ga door.
+        console.error(`⚠️ Bevestigingsmail voor boeking ${result.id} mislukt:`, err);
+      }
+    }
+  }
+}
+
+/**
+ * Verloopt 'pending' boekingen waarvan de betaaltimeout is verstreken, zodat
+ * het slot weer vrijkomt. Aangeroepen door de cron-endpoint.
+ */
+export async function expireStalePendingBookings(): Promise<number> {
+  const rows = await query<{ id: string }>(
+    `UPDATE bookings SET status = 'expired', updated_at = now()
+      WHERE status = 'pending' AND expires_at IS NOT NULL AND expires_at < now()
+      RETURNING id`,
+  );
+  return rows.length;
+}
