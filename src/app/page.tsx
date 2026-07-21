@@ -42,6 +42,21 @@ function maxDateStr(): string {
   }).format(d);
 }
 
+/** De eerstvolgende 3 dagen (morgen + 2), voor snelkeuze-knoppen. */
+function quickDates(): { value: string; label: string; sub: string }[] {
+  const iso = (d: Date) =>
+    new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Amsterdam", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
+  const weekday = (d: Date) =>
+    new Intl.DateTimeFormat("nl-NL", { timeZone: "Europe/Amsterdam", weekday: "short" }).format(d).replace(".", "");
+  const dayMonth = (d: Date) =>
+    new Intl.DateTimeFormat("nl-NL", { timeZone: "Europe/Amsterdam", day: "numeric", month: "short" }).format(d).replace(".", "");
+  return [1, 2, 3].map((add, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() + add);
+    return { value: iso(d), label: i === 0 ? "Morgen" : weekday(d), sub: dayMonth(d) };
+  });
+}
+
 const reasonText: Record<string, string> = {
   booked: "Bezet",
   blocked: "Niet beschikbaar",
@@ -66,6 +81,11 @@ export default function BookingPage() {
   // Ingelogde klant + saldo (voor 'boek met tegoed').
   const [loggedIn, setLoggedIn] = useState(false);
   const [balanceMinutes, setBalanceMinutes] = useState(0);
+
+  // Kortingscode
+  const [discountCode, setDiscountCode] = useState("");
+  const [discount, setDiscount] = useState<{ code: string; discountCents: number; finalCents: number } | null>(null);
+  const [discountMsg, setDiscountMsg] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/account/me", { cache: "no-store" })
@@ -103,7 +123,31 @@ export default function BookingPage() {
     };
   }, [date]);
 
+  // Korting resetten als je een ander dagdeel kiest (prijs verandert).
+  useEffect(() => {
+    setDiscount(null);
+    setDiscountMsg(null);
+  }, [selected]);
+
+  async function applyDiscount() {
+    if (!selectedSlot || !discountCode.trim()) return;
+    setDiscountMsg(null);
+    try {
+      const res = await fetch("/api/discount/validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: discountCode.trim(), daypart: selectedSlot.daypart, email: email.trim() || undefined }),
+      });
+      const d = await res.json();
+      if (d.ok) setDiscount({ code: d.code, discountCents: d.discountCents, finalCents: d.finalCents });
+      else { setDiscount(null); setDiscountMsg(d.reason ?? "Ongeldige code."); }
+    } catch {
+      setDiscountMsg("Kon de code niet controleren.");
+    }
+  }
+
   const selectedSlot = slots?.find((s) => s.daypart === selected) ?? null;
+  const payCents = discount ? discount.finalCents : selectedSlot?.priceCents ?? 0;
   const canSubmit =
     selectedSlot && name.trim().length >= 2 && /\S+@\S+\.\S+/.test(email) && phone.trim().length >= 6;
 
@@ -122,11 +166,13 @@ export default function BookingPage() {
           email: email.trim(),
           phone: phone.trim(),
           numPeople: numPeople ? Number(numPeople) : undefined,
+          discountCode: discount ? discount.code : undefined,
         }),
       });
       const data = await res.json();
       if (!res.ok) {
         setError(data.error ?? "Er ging iets mis.");
+        if (data.code === "invalid_discount") { setDiscount(null); setDiscountMsg(data.error); }
         // Bij slot_taken/not_bookable: beschikbaarheid verversen.
         if (data.code === "slot_taken" || data.code === "not_bookable") {
           setSelected(null);
@@ -183,10 +229,10 @@ export default function BookingPage() {
   return (
     <div className="wrap">
       <div className="topbar">
-        <div className="brand">
+        <a className="brand brand-link" href="/" aria-label="Naar de startpagina">
           <span className="logo-mark">MSA</span>
           <h1>Boek studiotijd</h1>
-        </div>
+        </a>
         <a className="account-btn" href={loggedIn ? "/account" : "/account/login"}>
           {loggedIn ? "Mijn account" : "Inloggen"}
         </a>
@@ -203,6 +249,20 @@ export default function BookingPage() {
       {/* Stap 1: datum */}
       <div className="card">
         <p className="step-label">1 · Kies een datum</p>
+        <div className="quick-dates">
+          {quickDates().map((q) => (
+            <button
+              key={q.value}
+              type="button"
+              className={`quick-date${date === q.value ? " active" : ""}`}
+              onClick={() => setDate(q.value)}
+            >
+              <span className="qd-label">{q.label}</span>
+              <span className="qd-sub">{q.sub}</span>
+            </button>
+          ))}
+        </div>
+        <p className="or-label">of kies zelf een datum</p>
         <input
           type="date"
           value={date}
@@ -272,11 +332,48 @@ export default function BookingPage() {
             onChange={(e) => setNumPeople(e.target.value)}
           />
 
+          {/* Kortingscode */}
+          <label htmlFor="disc">Kortingscode (optioneel)</label>
+          <div style={{ display: "flex", gap: 8 }}>
+            <input
+              id="disc"
+              type="text"
+              value={discountCode}
+              placeholder="Bijv. ZOMER10"
+              onChange={(e) => setDiscountCode(e.target.value.toUpperCase())}
+              style={{ textTransform: "uppercase" }}
+            />
+            <button
+              type="button"
+              className="secondary"
+              style={{ width: "auto", margin: 0, whiteSpace: "nowrap", padding: "0 18px" }}
+              onClick={applyDiscount}
+              disabled={!discountCode.trim()}
+            >
+              Toepassen
+            </button>
+          </div>
+          {discount && (
+            <p className="muted" style={{ marginTop: 8, color: "var(--green)" }}>
+              ✓ Code <strong>{discount.code}</strong> toegepast — {euro(discount.discountCents)} korting.
+            </p>
+          )}
+          {discountMsg && (
+            <p className="muted" style={{ marginTop: 8, color: "var(--danger)" }}>{discountMsg}</p>
+          )}
+
           <div className="summary">
             <span className="muted">
               {selectedSlot.label} · {selectedSlot.start}–{selectedSlot.end}
             </span>
-            <span className="total">{euro(selectedSlot.priceCents)}</span>
+            <span className="total">
+              {discount && (
+                <span style={{ color: "var(--text-dim)", textDecoration: "line-through", fontSize: 16, marginRight: 8 }}>
+                  {euro(selectedSlot.priceCents)}
+                </span>
+              )}
+              {euro(payCents)}
+            </span>
           </div>
 
           {canPayWithCredit && (
@@ -291,7 +388,7 @@ export default function BookingPage() {
           >
             {submitting
               ? "Betaling starten…"
-              : `${canPayWithCredit ? "Betaal dit dagdeel los" : "Afrekenen"} · ${euro(selectedSlot.priceCents)}`}
+              : `${canPayWithCredit ? "Betaal dit dagdeel los" : "Afrekenen"} · ${euro(payCents)}`}
           </button>
           <p className="muted" style={{ marginTop: 10, fontSize: 13, textTransform: "none", letterSpacing: 0 }}>
             {canPayWithCredit

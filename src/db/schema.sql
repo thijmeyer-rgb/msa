@@ -139,3 +139,35 @@ CREATE TABLE IF NOT EXISTS login_tokens (
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS login_tokens_email_idx ON login_tokens (email);
+
+-- ═══════════════════════════════════════════════════════════════════════
+--  FASE 4 — groei: site-instellingen + kortingscodes
+-- ═══════════════════════════════════════════════════════════════════════
+
+-- Vrije sleutel/waarde-instellingen (bv. Google Analytics- en Meta Pixel-ID),
+-- beheerbaar vanuit het admin-scherm.
+CREATE TABLE IF NOT EXISTS site_settings (
+  key        TEXT PRIMARY KEY,
+  value      TEXT,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Kortingscodes, beheerbaar vanuit admin.
+CREATE TABLE IF NOT EXISTS discount_codes (
+  id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  code               TEXT NOT NULL,
+  type               TEXT NOT NULL CHECK (type IN ('percent','fixed')),
+  value              INTEGER NOT NULL,           -- percent: 1-100 · fixed: centen
+  max_uses           INTEGER,                    -- NULL = ongelimiteerd
+  used_count         INTEGER NOT NULL DEFAULT 0,
+  expires_at         TIMESTAMPTZ,
+  new_customers_only BOOLEAN NOT NULL DEFAULT false,
+  active             BOOLEAN NOT NULL DEFAULT true,
+  auto_generated     BOOLEAN NOT NULL DEFAULT false, -- bv. review-beloning
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS discount_codes_code_idx ON discount_codes (upper(code));
+
+-- Kortingskoppeling op boekingen.
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS discount_code_id UUID REFERENCES discount_codes(id);
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS discount_cents INTEGER NOT NULL DEFAULT 0;

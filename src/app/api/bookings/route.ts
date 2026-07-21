@@ -4,6 +4,7 @@ import {
   createBookingAndPayment,
   SlotTakenError,
   SlotNotBookableError,
+  InvalidDiscountError,
 } from "@/lib/bookings";
 import { isDaypartId } from "@/lib/config";
 
@@ -14,6 +15,7 @@ const BookingSchema = z.object({
   email: z.string().trim().email("Ongeldig e-mailadres.").max(200),
   phone: z.string().trim().min(6, "Vul je telefoonnummer in.").max(40),
   numPeople: z.coerce.number().int().min(1).max(20).optional(),
+  discountCode: z.string().trim().max(40).optional(),
 });
 
 /**
@@ -45,6 +47,7 @@ export async function POST(request: Request) {
       email: data.email,
       phone: data.phone,
       numPeople: data.numPeople,
+      discountCode: data.discountCode || undefined,
     });
     return NextResponse.json(result, { status: 201 });
   } catch (err) {
@@ -53,6 +56,9 @@ export async function POST(request: Request) {
     }
     if (err instanceof SlotNotBookableError) {
       return NextResponse.json({ error: err.message, code: "not_bookable" }, { status: 409 });
+    }
+    if (err instanceof InvalidDiscountError) {
+      return NextResponse.json({ error: err.message, code: "invalid_discount" }, { status: 409 });
     }
     console.error("Boeking aanmaken mislukt:", err);
     return NextResponse.json(

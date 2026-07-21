@@ -30,7 +30,16 @@
       "Bash(lsof -ti:5433)",
       "Bash(curl -s -o /dev/null \"http://localhost:3000/api/availability?date=2026-08-01\")",
       "Bash(xargs kill)",
-      "Bash(echo \"opgeruimd; poort 5433: $\\(lsof -ti:5433 || echo vrij\\)\")"
+      "Bash(echo \"opgeruimd; poort 5433: $\\(lsof -ti:5433 || echo vrij\\)\")",
+      "Bash(echo \"poort 5433: $\\(lsof -ti:5433 || echo vrij\\)\")",
+      "Bash(node tests/seed-stats.mjs)",
+      "Bash(curl -s -o /dev/null -u admin:studio-admin \"http://localhost:3000/api/admin/stats\")",
+      "Bash(curl -s -u admin:studio-admin \"http://localhost:3000/api/admin/stats\")",
+      "Bash(node -e 'const d=JSON.parse\\(require\\(\"fs\"\\).readFileSync\\(0\\)\\);console.log\\(\"Omzet maand: €\"+\\(d.revenue.month/100\\).toFixed\\(2\\)+\" | week: €\"+\\(d.revenue.week/100\\).toFixed\\(2\\)+\" | totaal: €\"+\\(d.revenue.total/100\\).toFixed\\(2\\)\\);console.log\\(\"Bezetting 30d:\",d.occupancy+\"%\",\"| Aankomend:\",d.upcoming,\"| Gem boeking: €\"+\\(d.avgBookingCents/100\\).toFixed\\(2\\)\\);console.log\\(\"Conversie:\",d.conversion+\"%\",\"| Uitstaand tegoed:\",\\(d.outstandingCreditMinutes/60\\)+\"u\"\\);console.log\\(\"Per dagdeel:\",d.byDaypart.map\\(x=>x.daypart+\"=\"+x.n\\).join\\(\", \"\\)\\);console.log\\(\"Per weekdag\\(dow\\):\",d.byWeekday.map\\(x=>x.dow+\"=\"+x.n\\).join\\(\", \"\\)\\);console.log\\(\"Nieuw/terugkerend:\",d.customers.nieuw+\"/\"+d.customers.terugkerend\\)')",
+      "Bash(curl -s -X POST http://localhost:3000/api/discount/validate -H \"Content-Type: application/json\" -d '{\"code\":\"ZOMER10\",\"daypart\":\"avond\"}')",
+      "Bash(curl -s -X POST http://localhost:3000/api/discount/validate -H \"Content-Type: application/json\" -d '{\"code\":\"WELKOM5\",\"daypart\":\"ochtend\"}')",
+      "Bash(curl -s -X POST http://localhost:3000/api/discount/validate -H \"Content-Type: application/json\" -d '{\"code\":\"NIETBESTAAND\",\"daypart\":\"avond\"}')",
+      "Bash(rm -f tests/seed-disc.mjs tests/seed-stats.mjs)"
     ]
   }
 }

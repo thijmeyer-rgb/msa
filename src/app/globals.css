@@ -101,14 +101,16 @@ a {
   gap: 12px;
   min-width: 0;
 }
+/* Logo: toont /logo.svg. Vervang public/logo.svg door je eigen bestand. */
 .logo-mark {
-  font-family: var(--font-display);
-  font-size: 26px;
-  letter-spacing: 0.02em;
-  color: var(--yellow);
-  line-height: 1;
-  padding: 6px 9px 4px;
-  border: 2px solid var(--yellow);
+  display: block;
+  width: 108px;
+  height: 42px;
+  background: url("/logo.svg") left center / contain no-repeat;
+  border: none;
+  padding: 0;
+  font-size: 0;
+  color: transparent;
   flex-shrink: 0;
 }
 .brand h1 {
@@ -141,6 +143,75 @@ h3 {
 .accent-green {
   color: var(--green);
   font-weight: 800;
+}
+
+/* Klikbaar logo → startpagina */
+.brand-link {
+  text-decoration: none;
+  color: inherit;
+}
+.brand-link:hover .logo-mark {
+  opacity: 0.82;
+}
+
+/* Snelkeuze-datumknoppen (morgen + 2) */
+.quick-dates {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.quick-date {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 12px 6px;
+  min-height: 62px;
+  background: var(--bg);
+  border: 2px solid var(--border-input);
+  color: var(--text);
+  font-family: var(--font-body);
+  cursor: pointer;
+  transition: border-color 0.14s var(--ease), background 0.14s var(--ease), transform 0.08s var(--ease);
+}
+.quick-date:hover {
+  border-color: var(--green);
+}
+.quick-date:active {
+  transform: translateY(1px);
+}
+.quick-date:focus-visible {
+  outline: 3px solid var(--yellow);
+  outline-offset: 2px;
+}
+.quick-date.active {
+  border-color: var(--on-accent);
+  background: var(--yellow);
+  color: var(--on-accent);
+}
+.qd-label {
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 13px;
+}
+.qd-sub {
+  font-size: 12px;
+  color: var(--blue);
+  font-variant-numeric: tabular-nums;
+}
+.quick-date.active .qd-sub {
+  color: var(--on-accent);
+}
+.or-label {
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin: 12px 0 10px;
 }
 
 /* ─── Kaarten ────────────────────────────────────────────────────────── */
@@ -495,6 +566,146 @@ select:focus {
   }
 }
 
+/* ─── Dashboard: stat-tegels & staafjes ──────────────────────────────── */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+.stat-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px;
+  background: var(--bg);
+  border: 2px solid var(--border-input);
+}
+.stat-tile.accent {
+  border-color: var(--yellow);
+}
+.stat-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+  color: var(--text-dim);
+}
+.stat-value {
+  font-family: var(--font-display);
+  font-size: 30px;
+  line-height: 1;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.stat-tile.accent .stat-value {
+  color: var(--yellow);
+}
+.stat-sub {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.bars {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.bar-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.bar-label {
+  width: 84px;
+  flex-shrink: 0;
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.bar-track {
+  flex: 1;
+  height: 16px;
+  background: var(--bg);
+  border: 2px solid var(--border-input);
+}
+.bar-fill {
+  display: block;
+  height: 100%;
+  background: var(--yellow);
+  transition: width 0.4s var(--ease);
+}
+.bar-num {
+  width: 28px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  color: var(--text-dim);
+}
+
+.weekday-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  height: 120px;
+}
+.wd-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  height: 100%;
+  gap: 4px;
+}
+.wd-bar {
+  width: 100%;
+  background: var(--green);
+  transition: height 0.4s var(--ease);
+}
+.wd-num {
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.wd-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+/* Cookie-consent-banner */
+.consent {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 14px;
+  padding: 16px 20px;
+  background: var(--surface);
+  border-top: 2px solid var(--yellow);
+}
+.consent-text {
+  font-size: 13px;
+  color: var(--text-dim);
+  max-width: 520px;
+}
+.consent-actions {
+  display: flex;
+  gap: 10px;
+}
+.consent-btn {
+  width: auto;
+  margin: 0;
+  padding: 10px 20px;
+  font-size: 13px;
+}
+
 .footer-note {
   color: var(--text-dim);
   font-size: 12px;
@@ -504,10 +715,32 @@ select:focus {
   margin-top: 28px;
 }
 
+@media (max-width: 520px) {
+  .stat-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .stat-value {
+    font-size: 26px;
+  }
+}
+
 /* ─── Responsive ─────────────────────────────────────────────────────── */
 @media (max-width: 520px) {
   .wrap {
     padding: 26px 14px 72px;
+  }
+  /* Alles netjes gecentreerd op mobiel */
+  .topbar {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 12px;
+  }
+  .brand {
+    justify-content: center;
+  }
+  .tagline {
+    text-align: center;
   }
   .card {
     padding: 18px 15px;

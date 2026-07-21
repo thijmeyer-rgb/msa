@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Anton, Archivo } from "next/font/google";
 import "./globals.css";
+import Tracking from "@/components/Tracking";
 
 // Merk-fonts van muziekstudioalkmaar.nl: Anton (zware display-koppen) + Archivo (body).
 const anton = Anton({
@@ -28,6 +29,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <div className="grain" aria-hidden="true" />
         {children}
+        <Tracking />
       </body>
     </html>
   );

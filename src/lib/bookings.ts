@@ -11,6 +11,7 @@ import {
 } from "@/lib/config";
 import { isSlotBookable } from "@/lib/availability";
 import { consumeCredits, grantCredits } from "@/lib/credits";
+import { validateDiscount, incrementDiscountUse } from "@/lib/discounts";
 
 export class SlotTakenError extends Error {
   constructor() {
@@ -24,6 +25,12 @@ export class SlotNotBookableError extends Error {
     this.name = "SlotNotBookableError";
   }
 }
+export class InvalidDiscountError extends Error {
+  constructor(msg: string) {
+    super(msg);
+    this.name = "InvalidDiscountError";
+  }
+}
 
 interface CreateBookingInput {
   date: string;
@@ -32,6 +39,7 @@ interface CreateBookingInput {
   email: string;
   phone: string;
   numPeople?: number;
+  discountCode?: string;
 }
 
 interface CreateBookingResult {
@@ -62,6 +70,17 @@ export async function createBookingAndPayment(input: CreateBookingInput): Promis
     throw new SlotNotBookableError();
   }
 
+  // 1b. Kortingscode valideren (indien opgegeven) en eindbedrag bepalen.
+  let discountCents = 0;
+  let discountCodeId: string | null = null;
+  if (input.discountCode) {
+    const res = await validateDiscount(input.discountCode, dp.priceCents, input.email);
+    if (!res.ok) throw new InvalidDiscountError(res.reason ?? "Ongeldige kortingscode.");
+    discountCents = res.discountCents ?? 0;
+    discountCodeId = res.codeId ?? null;
+  }
+  const chargeCents = dp.priceCents - discountCents;
+
   const expiresAt = new Date(Date.now() + PENDING_TTL_MINUTES * 60 * 1000);
 
   // 2. Klant + pending boeking in één transactie.
@@ -81,10 +100,12 @@ export async function createBookingAndPayment(input: CreateBookingInput): Promis
     try {
       const rows = await client.query<{ id: string }>(
         `INSERT INTO bookings
-           (booking_date, daypart, status, customer_id, price_cents, num_people, expires_at)
-         VALUES ($1, $2, 'pending', $3, $4, $5, $6)
+           (booking_date, daypart, status, customer_id, price_cents, num_people, expires_at,
+            discount_code_id, discount_cents)
+         VALUES ($1, $2, 'pending', $3, $4, $5, $6, $7, $8)
          RETURNING id`,
-        [input.date, input.daypart, customerId, dp.priceCents, input.numPeople ?? null, expiresAt],
+        [input.date, input.daypart, customerId, dp.priceCents, input.numPeople ?? null, expiresAt,
+         discountCodeId, discountCents],
       );
       return rows.rows[0].id;
     } catch (err) {
@@ -97,9 +118,13 @@ export async function createBookingAndPayment(input: CreateBookingInput): Promis
   // 3. Mollie-betaling. Buiten de transactie (externe call).
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? "";
   try {
+    const desc =
+      discountCents > 0
+        ? `${STUDIO.name} — ${dp.label} ${input.date} (${formatEuro(chargeCents)}, korting ${formatEuro(discountCents)})`
+        : `${STUDIO.name} — ${dp.label} ${input.date} (${formatEuro(chargeCents)})`;
     const payment = await mollie().payments.create({
-      amount: mollieAmount(dp.priceCents),
-      description: `${STUDIO.name} — ${dp.label} ${input.date} (${formatEuro(dp.priceCents)})`,
+      amount: mollieAmount(chargeCents),
+      description: desc,
       redirectUrl: `${baseUrl}/boeking/${bookingId}`,
       webhookUrl: `${baseUrl}/api/webhooks/mollie`,
       metadata: { type: "booking", bookingId },
@@ -278,8 +303,9 @@ async function markBookingPaid(molliePaymentId: string): Promise<void> {
       daypart: DaypartId;
       price_cents: number;
       customer_id: string;
+      discount_code_id: string | null;
     }>(
-      `SELECT id, status, booking_date, daypart, price_cents, customer_id
+      `SELECT id, status, booking_date, daypart, price_cents, customer_id, discount_code_id
          FROM bookings WHERE mollie_payment_id = $1 FOR UPDATE`,
       [molliePaymentId],
     );
@@ -295,6 +321,8 @@ async function markBookingPaid(molliePaymentId: string): Promise<void> {
           WHERE id = $1`,
         [booking.id],
       );
+      // Kortingscode-gebruik precies één keer ophogen (bij deze overgang).
+      if (booking.discount_code_id) await incrementDiscountUse(booking.discount_code_id, client);
       return booking;
     }
 

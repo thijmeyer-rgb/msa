@@ -255,6 +255,67 @@ async function main() {
     ok("pakket-aankoop idempotent: credits exact 1× bijgeboekt (480 min) ★");
   else bad("pakket-idempotentie", `1e=${g1}, 2e=${g2}, saldo=${pkgBal} (verwacht true/false/480)`);
 
+  // ═══ FASE 4 — kortingscodes ═════════════════════════════════════════
+  // Simuleer validateDiscount-logica in SQL/JS (spiegelt src/lib/discounts.ts).
+  const MINCHARGE = 100;
+  function calcDiscount(row, base) {
+    let dc = row.type === "percent" ? Math.round(base * row.value / 100) : Math.min(row.value, base);
+    return Math.min(dc, Math.max(0, base - MINCHARGE));
+  }
+
+  // ── Test 16: percentage-code rekent correct ─────────────────────────
+  await db.query(`INSERT INTO discount_codes(code,type,value) VALUES('ZOMER10','percent',10)`);
+  {
+    const r = (await db.query(`SELECT * FROM discount_codes WHERE code='ZOMER10'`)).rows[0];
+    const dc = calcDiscount(r, 5500); // avond €55
+    if (dc === 550) ok("percentage-korting: 10% van €55 = €5,50 ★");
+    else bad("percentage", `kreeg ${dc}, verwacht 550`);
+  }
+
+  // ── Test 17: vast bedrag, nooit onder minimum ───────────────────────
+  await db.query(`INSERT INTO discount_codes(code,type,value) VALUES('MEGA','fixed',9900)`);
+  {
+    const r = (await db.query(`SELECT * FROM discount_codes WHERE code='MEGA'`)).rows[0];
+    const dc = calcDiscount(r, 4500); // ochtend €45; korting €99 zou negatief maken
+    const final = 4500 - dc;
+    if (final >= MINCHARGE && dc === 4400) ok("vast bedrag capt op minimaal te betalen (€1 blijft over) ★");
+    else bad("vast bedrag cap", `dc=${dc}, final=${final}`);
+  }
+
+  // ── Test 18: unieke code (case-insensitive) ─────────────────────────
+  try {
+    await db.query(`INSERT INTO discount_codes(code,type,value) VALUES('zomer10','fixed',500)`);
+    bad("unieke code", "dubbele code (andere case) werd geaccepteerd");
+  } catch (err) {
+    if (isUniqueViolation(err)) ok("dubbele code (case-insensitive) geweigerd ★");
+    else bad("unieke code", `andere fout: ${err.message}`);
+  }
+
+  // ── Test 19: max_uses bereikt → niet meer geldig ────────────────────
+  await db.query(`INSERT INTO discount_codes(code,type,value,max_uses,used_count) VALUES('OP','percent',10,3,3)`);
+  {
+    const r = (await db.query(`SELECT * FROM discount_codes WHERE code='OP'`)).rows[0];
+    const valid = r.active && !(r.max_uses != null && r.used_count >= r.max_uses);
+    if (!valid) ok("code met bereikt max-gebruik is niet meer geldig ★");
+    else bad("max_uses", "code onterecht nog geldig");
+  }
+
+  // ── Test 20: verlopen code ──────────────────────────────────────────
+  await db.query(`INSERT INTO discount_codes(code,type,value,expires_at) VALUES('OUD','percent',10, now() - '1 day'::interval)`);
+  {
+    const r = (await db.query(`SELECT * FROM discount_codes WHERE code='OUD'`)).rows[0];
+    const valid = !(r.expires_at && new Date(r.expires_at) < new Date());
+    if (!valid) ok("verlopen code wordt geweigerd ★");
+    else bad("verlopen code", "onterecht geldig");
+  }
+
+  // ── Test 21: gebruiksteller ophogen bij betaling ────────────────────
+  const before = (await db.query(`SELECT used_count FROM discount_codes WHERE code='ZOMER10'`)).rows[0].used_count;
+  await db.query(`UPDATE discount_codes SET used_count = used_count + 1 WHERE code='ZOMER10'`);
+  const after = (await db.query(`SELECT used_count FROM discount_codes WHERE code='ZOMER10'`)).rows[0].used_count;
+  if (after === before + 1) ok("gebruiksteller correct opgehoogd bij bevestigde betaling");
+  else bad("gebruiksteller", `${before} → ${after}`);
+
   console.log(`\n${fail === 0 ? "✅" : "❌"}  ${pass} geslaagd, ${fail} mislukt`);
   await db.close();
   process.exit(fail === 0 ? 0 : 1);

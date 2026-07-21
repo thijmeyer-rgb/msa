@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import StatsOverview from "./StatsOverview";
 
 interface Booking {
   id: string;
@@ -94,8 +95,10 @@ export default function AdminPage() {
         <h1>Admin</h1>
       </div>
       <p className="tagline">
-        Overzicht van boekingen en blokkades. · <a href="/admin/klanten">Klanten &amp; uren →</a>
+        <a href="/admin/klanten">Klanten &amp; uren</a> · <a href="/admin/kortingen">Kortingscodes</a> · <a href="/admin/instellingen">Instellingen</a>
       </p>
+
+      <StatsOverview />
 
       {/* Blokkade toevoegen */}
       <div className="card">
