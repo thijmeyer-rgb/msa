@@ -4,10 +4,10 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "node src/db/migrate.mjs && next build",
     "start": "next start",
     "lint": "next lint",
-    "db:migrate": "node --experimental-strip-types src/db/migrate.ts"
+    "db:migrate": "node src/db/migrate.mjs"
   },
   "dependencies": {
     "@mollie/api-client": "^4.1.0",

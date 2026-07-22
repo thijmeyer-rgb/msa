@@ -1,23 +1,24 @@
 /**
- * Past het databaseschema toe. Idempotent — veilig herhaald uit te voeren.
+ * Past het databaseschema toe (idempotent). Draait automatisch mee in de
+ * Vercel-build, zodat de database altijd up-to-date is vóór de site live gaat.
+ * Ook los te draaien: `npm run db:migrate`.
  *
- *   npm run db:migrate
- *
- * Vereist DATABASE_URL in de omgeving (.env.local wordt automatisch geladen
- * als je via `npm run` draait en Next het inlaadt; anders exporteer je hem).
+ * Gedrag:
+ *  - Geen DATABASE_URL → overslaan (build gaat gewoon door; bv. previews).
+ *  - Wel DATABASE_URL maar migratie faalt → build faalt (zodat je het merkt).
  */
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { Pool } from "pg";
+import pg from "pg";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 async function main() {
   const connectionString = process.env.DATABASE_URL;
   if (!connectionString) {
-    console.error("✗ DATABASE_URL ontbreekt. Zet hem in je omgeving of .env.local.");
-    process.exit(1);
+    console.log("• db:migrate overgeslagen (geen DATABASE_URL).");
+    return;
   }
 
   const schema = readFileSync(join(__dirname, "schema.sql"), "utf8");
@@ -28,16 +29,16 @@ async function main() {
       ? { rejectUnauthorized: false }
       : undefined;
 
-  const pool = new Pool({ connectionString, ssl });
+  const pool = new pg.Pool({ connectionString, ssl, connectionTimeoutMillis: 15000 });
   try {
     await pool.query(schema);
     console.log("✓ Schema toegepast.");
-  } catch (err) {
-    console.error("✗ Migratie mislukt:", err);
-    process.exitCode = 1;
   } finally {
     await pool.end();
   }
 }
 
-main();
+main().catch((err) => {
+  console.error("✗ Migratie mislukt:", err.message);
+  process.exit(1);
+});
