@@ -96,7 +96,7 @@ export async function sendBookingConfirmation(data: BookingEmailData): Promise<v
     ? "Betaald met je uren-tegoed."
     : `Betaald: ${formatEuro(data.priceCents)} (incl. btw).`;
 
-  const from = process.env.EMAIL_FROM ?? `${STUDIO.name} <boekingen@muziekstudioalkmaar.nl>`;
+  const from = process.env.EMAIL_FROM ?? `${STUDIO.name} <boekingen@booking.muziekstudioalkmaar.nl>`;
   const subject = `Bevestiging boeking ${STUDIO.name} — ${dateNl} ${slotLabel}`;
   const waPrefill = `Hoi! Ik heb ${slotLabel} op ${dateNl} geboekt en heb een vraag.`;
 
@@ -214,7 +214,7 @@ function renderConfirmationHtml(
 // ─── Login-mail (magic link) ──────────────────────────────────────────────
 
 export async function sendLoginLink(email: string, link: string): Promise<void> {
-  const from = process.env.EMAIL_FROM ?? `${STUDIO.name} <boekingen@muziekstudioalkmaar.nl>`;
+  const from = process.env.EMAIL_FROM ?? `${STUDIO.name} <boekingen@booking.muziekstudioalkmaar.nl>`;
   const text = `Hoi,
 
 Log in bij ${STUDIO.name} via deze link (30 minuten geldig):
