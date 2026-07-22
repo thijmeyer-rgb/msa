@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import GoogleCalendarCard from "./GoogleCalendarCard";
 
 export default function AdminSettingsPage() {
   const [gaId, setGaId] = useState("");
@@ -45,6 +46,8 @@ export default function AdminSettingsPage() {
         <h1>Instellingen</h1>
       </div>
       <p className="tagline"><a href="/admin">← Terug naar dashboard</a></p>
+
+      <GoogleCalendarCard />
 
       <div className="card">
         <p className="step-label">Tracking</p>

@@ -60,7 +60,11 @@
       "Bash(cp /tmp/ins.mjs ./_ins.mjs)",
       "Bash(node _ins.mjs)",
       "Bash(rm -f ./_ins.mjs)",
-      "Bash(jobs)"
+      "Bash(jobs)",
+      "Bash(curl -s -c c.txt -X POST http://localhost:3000/api/admin/auth -H 'Content-Type: application/json' -d '{\"password\":\"studio-admin\"}')",
+      "Bash(curl -s -b c.txt http://localhost:3000/api/admin/google/status)",
+      "Bash(curl -s -b c.txt -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:3000/api/admin/google/connect)",
+      "Bash(curl -s -b c.txt -o /dev/null -D - http://localhost:3000/api/admin/google/connect)"
     ]
   }
 }

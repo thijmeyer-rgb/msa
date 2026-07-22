@@ -20,11 +20,13 @@ import { isSlotBookable, isDateWithinWindow } from "@/lib/availability";
 import { consumeCredits, grantCredits } from "@/lib/credits";
 import { validateDiscount, incrementDiscountUse } from "@/lib/discounts";
 import { isNukiEnabled, createKeypadCode } from "@/lib/nuki";
-import { isGcalEnabled, createCalendarEvent, deleteCalendarEvent } from "@/lib/gcal";
+import { hasOAuthCredentials, createCalendarEvent, deleteCalendarEvent } from "@/lib/gcal";
 
 /**
- * Zet (indien Google Calendar actief is) de boeking als afspraak in de
+ * Zet (indien Google Calendar gekoppeld is) de boeking als afspraak in de
  * studio-agenda en bewaart het event-id voor annulering. Non-fataal.
+ * createCalendarEvent doet zelf de definitieve check (refresh-token aanwezig);
+ * de snelle env-check hier voorkomt onnodig werk als er niets is ingesteld.
  */
 async function provisionCalendarEvent(
   bookingId: string,
@@ -33,7 +35,7 @@ async function provisionCalendarEvent(
   end: Date,
   customer: { name?: string; email?: string; phone?: string },
 ): Promise<void> {
-  if (!isGcalEnabled()) return;
+  if (!hasOAuthCredentials()) return;
   try {
     const who = customer.name?.trim() || customer.email || "klant";
     const eventId = await createCalendarEvent({
