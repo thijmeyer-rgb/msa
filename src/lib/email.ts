@@ -315,6 +315,56 @@ ${STUDIO.name}`;
   await resend().emails.send({ from, to: data.customerEmail, subject: `Je boeking bij ${STUDIO.name} is nog niet afgerond`, text, html });
 }
 
+// ─── Review-verzoek (1 dag ná de sessie) met kortingscode ────────────────
+
+export async function sendReviewRequestEmail(data: {
+  customerName: string;
+  customerEmail: string;
+  reviewUrl: string;
+  code: string;
+  rewardCents: number;
+}): Promise<void> {
+  const from = process.env.EMAIL_FROM ?? `${STUDIO.name} <boekingen@booking.muziekstudioalkmaar.nl>`;
+  const reward = formatEuro(data.rewardCents);
+
+  const text = `Beste ${data.customerName},
+
+Bedankt dat je bij ${STUDIO.name} was! We hopen dat je een top sessie had.
+
+Zou je ons willen helpen met een korte review? Het kost een minuutje:
+${data.reviewUrl}
+
+Als bedankje krijg je ${reward} korting op je volgende boeking met deze code:
+${data.code}
+
+(Eenmalig te gebruiken, 90 dagen geldig.)
+
+Tot de volgende keer!
+${STUDIO.name}`;
+
+  const html = renderReviewRequestHtml(data.customerName, data.reviewUrl, data.code, reward);
+  await resend().emails.send({ from, to: data.customerEmail, subject: `Hoe was je sessie? ${reward} korting als bedankje`, text, html });
+}
+
+function renderReviewRequestHtml(name: string, reviewUrl: string, code: string, reward: string): string {
+  return shell(`
+    <h1 style="margin:0 0 4px;font-family:${BRAND.display};font-size:26px;letter-spacing:0.5px;text-transform:uppercase;color:${BRAND.text};">Hoe was het?</h1>
+    <p style="margin:0 0 18px;color:${BRAND.dim};">Beste ${name}, bedankt voor je sessie bij ${STUDIO.name}!</p>
+    <p style="margin:0 0 18px;">Zou je ons willen helpen met een korte review? Als bedankje krijg je
+      <strong style="color:${BRAND.accent};">${reward} korting</strong> op je volgende boeking.</p>
+    <p style="margin:0 0 20px;">
+      <a href="${reviewUrl}" style="background:${BRAND.accent};color:${BRAND.dark};text-decoration:none;padding:13px 26px;display:inline-block;border:2px solid ${BRAND.dark};box-shadow:3px 3px 0 0 #f5f5f5;font-family:${BRAND.display};font-size:16px;letter-spacing:0.6px;text-transform:uppercase;">Schrijf een review</a>
+    </p>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${BRAND.boxBg};border:2px solid ${BRAND.border};border-left:4px solid ${BRAND.green};margin-bottom:8px;">
+      <tr><td style="padding:16px 18px;">
+        <p style="margin:0 0 4px;color:${BRAND.dim};font-size:12px;text-transform:uppercase;letter-spacing:1px;">Jouw kortingscode</p>
+        <p style="margin:0;color:${BRAND.accent};font-family:${BRAND.display};font-size:24px;letter-spacing:1px;">${code}</p>
+        <p style="margin:6px 0 0;color:${BRAND.dim};font-size:12px;">${reward} korting · eenmalig · 90 dagen geldig</p>
+      </td></tr>
+    </table>
+  `);
+}
+
 // ─── Preview-helpers (voor de dev-preview-route) ─────────────────────────
 
 export function previewConfirmationHtml(): string {
@@ -329,4 +379,8 @@ export function previewConfirmationHtml(): string {
 
 export function previewLoginHtml(): string {
   return renderLoginHtml("https://booking.muziekstudioalkmaar.nl/api/auth/callback?token=voorbeeld");
+}
+
+export function previewReviewHtml(): string {
+  return renderReviewRequestHtml("Nout Kramer", "https://g.page/r/CXQ3bsqyLYGyEBM/review", "MSA-K7P2QX", "€ 10,00");
 }

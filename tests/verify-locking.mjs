@@ -348,6 +348,31 @@ async function main() {
     else bad("recovery-selectie", `kreeg ${JSON.stringify(daydelen)}, verwacht ['middag']`);
   }
 
+  // ── Test 24: auto-gegenereerde review-code is correct opgeslagen ────
+  await db.query(`INSERT INTO discount_codes(code,type,value,max_uses,expires_at,auto_generated)
+                  VALUES('MSA-TEST99','fixed',1000,1, now() + ('90' || ' days')::interval, true)`);
+  {
+    const r = (await db.query(
+      `SELECT type,value,max_uses,auto_generated,(expires_at > now()) AS future FROM discount_codes WHERE code='MSA-TEST99'`)).rows[0];
+    if (r.type === 'fixed' && r.value === 1000 && r.max_uses === 1 && r.auto_generated === true && r.future)
+      ok("auto-review-code: €10 vast, 1× te gebruiken, 90 dagen geldig ★");
+    else bad("auto-review-code", JSON.stringify(r));
+  }
+
+  // ── Test 25: review-selectie pikt gisteren-betaald-nog-niet-gevraagd ─
+  const cr = await newCustomer("review@example.com");
+  await db.query(`INSERT INTO bookings(booking_date,daypart,status,customer_id,price_cents) VALUES(current_date-1,'avond','paid',$1,5500)`,[cr]);
+  await db.query(`INSERT INTO bookings(booking_date,daypart,status,customer_id,price_cents,review_requested_at) VALUES(current_date-1,'ochtend','paid',$1,4500, now())`,[cr]); // al gevraagd
+  await db.query(`INSERT INTO bookings(booking_date,daypart,status,customer_id,price_cents) VALUES(current_date-3,'middag','paid',$1,5500)`,[cr]); // niet gisteren
+  {
+    const rows = (await db.query(
+      `SELECT b.id FROM bookings b JOIN customers c ON c.id=b.customer_id
+        WHERE b.status='paid' AND b.booking_date=current_date-1 AND b.review_requested_at IS NULL
+          AND c.email='review@example.com'`)).rows;
+    if (rows.length === 1) ok("review-selectie: alleen gisteren-betaald-nog-niet-gevraagd ★");
+    else bad("review-selectie", `kreeg ${rows.length}, verwacht 1`);
+  }
+
   console.log(`\n${fail === 0 ? "✅" : "❌"}  ${pass} geslaagd, ${fail} mislukt`);
   await db.close();
   process.exit(fail === 0 ? 0 : 1);

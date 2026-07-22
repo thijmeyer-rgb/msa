@@ -7,6 +7,8 @@ export default function AdminSettingsPage() {
   const [metaPixelId, setMetaPixelId] = useState("");
   const [reviewRating, setReviewRating] = useState("");
   const [reviewCount, setReviewCount] = useState("");
+  const [reviewUrl, setReviewUrl] = useState("");
+  const [reviewReward, setReviewReward] = useState("");
   const [msg, setMsg] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -16,6 +18,7 @@ export default function AdminSettingsPage() {
       .then((d) => {
         setGaId(d.gaId ?? ""); setMetaPixelId(d.metaPixelId ?? "");
         setReviewRating(d.reviewRating ?? ""); setReviewCount(d.reviewCount ?? "");
+        setReviewUrl(d.reviewUrl ?? ""); setReviewReward(d.reviewReward ?? "");
       })
       .finally(() => setLoading(false));
   }, []);
@@ -28,6 +31,7 @@ export default function AdminSettingsPage() {
       body: JSON.stringify({
         gaId: gaId.trim(), metaPixelId: metaPixelId.trim(),
         reviewRating: reviewRating.trim(), reviewCount: reviewCount.trim(),
+        reviewUrl: reviewUrl.trim(), reviewReward: reviewReward.trim(),
       }),
     });
     setMsg(res.ok ? "Opgeslagen ✓" : "Kon niet opslaan");
@@ -78,6 +82,21 @@ export default function AdminSettingsPage() {
           <button className="primary" onClick={save}>Opslaan</button>
           <p className="muted" style={{ marginTop: 12, fontSize: 13, textTransform: "none", letterSpacing: 0 }}>
             Toont bijv. “★ 4,9 · 120+ opnames” bovenaan de boekingspagina. Laat leeg om te verbergen.
+          </p>
+        </div>
+      )}
+
+      {!loading && (
+        <div className="card">
+          <p className="step-label">Review-mail (1 dag ná de sessie)</p>
+          <label htmlFor="ru">Google-review-link</label>
+          <input id="ru" type="text" value={reviewUrl} placeholder="https://g.page/r/…/review" onChange={(e) => setReviewUrl(e.target.value)} />
+          <label htmlFor="rw">Beloning in euro's</label>
+          <input id="rw" type="number" min={0} step="0.5" value={reviewReward} placeholder="10" onChange={(e) => setReviewReward(e.target.value)} />
+          <button className="primary" onClick={save}>Opslaan</button>
+          <p className="muted" style={{ marginTop: 12, fontSize: 13, textTransform: "none", letterSpacing: 0 }}>
+            Klanten krijgen 1 dag na hun sessie automatisch een mail met deze link en een eenmalige
+            kortingscode van dit bedrag (90 dagen geldig).
           </p>
         </div>
       )}

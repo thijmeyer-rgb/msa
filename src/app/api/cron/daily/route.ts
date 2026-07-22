@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { expireStalePendingBookings } from "@/lib/bookings";
-import { sendDueReminders, sendDueRecoveries } from "@/lib/automations";
+import { sendDueReminders, sendDueRecoveries, sendDueReviewRequests } from "@/lib/automations";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -21,8 +21,9 @@ async function handle(request: Request) {
   const expired = await expireStalePendingBookings();
   const reminders = await sendDueReminders();
   const recoveries = await sendDueRecoveries();
+  const reviewRequests = await sendDueReviewRequests();
 
-  return NextResponse.json({ expired, reminders, recoveries });
+  return NextResponse.json({ expired, reminders, recoveries, reviewRequests });
 }
 
 export const GET = handle;

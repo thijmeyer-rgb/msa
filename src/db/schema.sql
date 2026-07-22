@@ -176,3 +176,5 @@ ALTER TABLE bookings ADD COLUMN IF NOT EXISTS discount_cents INTEGER NOT NULL DE
 -- We houden bij wanneer welke mail is verstuurd zodat er nooit dubbel wordt gemaild.
 ALTER TABLE bookings ADD COLUMN IF NOT EXISTS reminder_sent_at TIMESTAMPTZ;
 ALTER TABLE bookings ADD COLUMN IF NOT EXISTS recovery_sent_at TIMESTAMPTZ;
+-- Review-verzoek (1 dag ná de sessie) met automatisch gegenereerde kortingscode.
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS review_requested_at TIMESTAMPTZ;

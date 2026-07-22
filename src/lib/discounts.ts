@@ -1,5 +1,5 @@
 import type { PoolClient } from "pg";
-import { query } from "@/lib/db";
+import { query, isUniqueViolation } from "@/lib/db";
 
 export interface DiscountRow {
   id: string;
@@ -95,4 +95,29 @@ export function generateCode(prefix = "MSA"): string {
   let s = "";
   for (let i = 0; i < 6; i++) s += chars[Math.floor(Math.random() * chars.length)];
   return `${prefix}-${s}`;
+}
+
+/**
+ * Maakt automatisch een eenmalige kortingscode aan (bv. review-beloning):
+ * vast bedrag in centen, 1× te gebruiken, verloopt na `validityDays` dagen.
+ * Retourneert de code. Herprobeert bij een (zeldzame) code-botsing.
+ */
+export async function createAutoDiscountCode(
+  valueCents: number,
+  validityDays = 90,
+): Promise<string> {
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const code = generateCode("MSA");
+    try {
+      await query(
+        `INSERT INTO discount_codes (code, type, value, max_uses, expires_at, auto_generated)
+         VALUES ($1, 'fixed', $2, 1, now() + ($3 || ' days')::interval, true)`,
+        [code, valueCents, validityDays],
+      );
+      return code;
+    } catch (err) {
+      if (!isUniqueViolation(err)) throw err;
+    }
+  }
+  throw new Error("Kon geen unieke kortingscode genereren.");
 }

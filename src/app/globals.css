@@ -101,12 +101,12 @@ a {
   gap: 12px;
   min-width: 0;
 }
-/* Logo: toont /logo.svg. Vervang public/logo.svg door je eigen bestand. */
+/* Logo: toont public/logo.png. Vervang dat bestand om het logo te wijzigen. */
 .logo-mark {
   display: block;
-  width: 108px;
-  height: 42px;
-  background: url("/logo.svg") left center / contain no-repeat;
+  width: 120px;
+  height: 44px;
+  background: url("/logo.png") left center / contain no-repeat;
   border: none;
   padding: 0;
   font-size: 0;

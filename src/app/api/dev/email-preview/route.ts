@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { previewConfirmationHtml, previewLoginHtml } from "@/lib/email";
+import { previewConfirmationHtml, previewLoginHtml, previewReviewHtml } from "@/lib/email";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +14,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Niet beschikbaar." }, { status: 404 });
   }
   const type = new URL(request.url).searchParams.get("type");
-  const html = type === "login" ? previewLoginHtml() : previewConfirmationHtml();
+  const html =
+    type === "login" ? previewLoginHtml() : type === "review" ? previewReviewHtml() : previewConfirmationHtml();
   return new NextResponse(html, { headers: { "Content-Type": "text/html; charset=utf-8" } });
 }
