@@ -1,7 +1,7 @@
 import type { PoolClient } from "pg";
 import { withTransaction, query, isUniqueViolation } from "@/lib/db";
 import { mollie, mollieAmount } from "@/lib/mollie";
-import { sendBookingConfirmation } from "@/lib/email";
+import { sendBookingConfirmation, sendAdminBookingNotification } from "@/lib/email";
 import {
   DAYPART_BY_ID,
   PENDING_TTL_MINUTES,
@@ -198,9 +198,9 @@ export async function createBookingWithCredits(input: {
     return id;
   });
 
-  // Bevestigingsmail buiten de transactie.
-  const cust = await query<{ name: string; email: string }>(
-    `SELECT name, email FROM customers WHERE id = $1`,
+  // Bevestigingsmail + admin-notificatie buiten de transactie.
+  const cust = await query<{ name: string; email: string; phone: string }>(
+    `SELECT name, email, phone FROM customers WHERE id = $1`,
     [input.customerId],
   );
   if (cust[0]?.email) {
@@ -216,6 +216,19 @@ export async function createBookingWithCredits(input: {
     } catch (err) {
       console.error(`⚠️ Bevestigingsmail (tegoed) voor ${bookingId} mislukt:`, err);
     }
+  }
+  try {
+    await sendAdminBookingNotification({
+      customerName: cust[0]?.name || "muzikant",
+      customerEmail: cust[0]?.email ?? "",
+      customerPhone: cust[0]?.phone ?? "",
+      date: input.date,
+      daypart: input.daypart,
+      priceCents: dp.priceCents,
+      paidWithCredit: true,
+    });
+  } catch (err) {
+    console.error(`⚠️ Admin-notificatie (tegoed) voor ${bookingId} mislukt:`, err);
   }
 
   return { bookingId };
@@ -302,10 +315,11 @@ async function markBookingPaid(molliePaymentId: string): Promise<void> {
       booking_date: string;
       daypart: DaypartId;
       price_cents: number;
+      discount_cents: number;
       customer_id: string;
       discount_code_id: string | null;
     }>(
-      `SELECT id, status, booking_date, daypart, price_cents, customer_id, discount_code_id
+      `SELECT id, status, booking_date, daypart, price_cents, discount_cents, customer_id, discount_code_id
          FROM bookings WHERE mollie_payment_id = $1 FOR UPDATE`,
       [molliePaymentId],
     );
@@ -355,10 +369,10 @@ async function markBookingPaid(molliePaymentId: string): Promise<void> {
     }
   });
 
-  // Buiten de transactie: bevestigingsmail, alleen bij een echte overgang.
+  // Buiten de transactie: bevestigingsmail + admin-notificatie, alleen bij een echte overgang.
   if (result) {
-    const customer = await query<{ name: string; email: string }>(
-      `SELECT name, email FROM customers WHERE id = $1`,
+    const customer = await query<{ name: string; email: string; phone: string }>(
+      `SELECT name, email, phone FROM customers WHERE id = $1`,
       [result.customer_id],
     );
     if (customer[0]) {
@@ -373,6 +387,19 @@ async function markBookingPaid(molliePaymentId: string): Promise<void> {
       } catch (err) {
         // Mail-fout mag de boeking niet ongedaan maken; log en ga door.
         console.error(`⚠️ Bevestigingsmail voor boeking ${result.id} mislukt:`, err);
+      }
+      try {
+        await sendAdminBookingNotification({
+          customerName: customer[0].name,
+          customerEmail: customer[0].email,
+          customerPhone: customer[0].phone,
+          date: result.booking_date,
+          daypart: result.daypart,
+          priceCents: result.price_cents,
+          discountCents: result.discount_cents,
+        });
+      } catch (err) {
+        console.error(`⚠️ Admin-notificatie voor boeking ${result.id} mislukt:`, err);
       }
     }
   }

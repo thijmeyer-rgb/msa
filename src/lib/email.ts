@@ -244,6 +244,55 @@ function renderLoginHtml(link: string): string {
   `);
 }
 
+// ─── Interne notificatie naar de studio bij elke boeking ─────────────────
+
+export async function sendAdminBookingNotification(data: {
+  customerName: string;
+  customerEmail: string;
+  customerPhone: string;
+  date: string;
+  daypart: DaypartId;
+  priceCents: number;
+  discountCents?: number;
+  paidWithCredit?: boolean;
+}): Promise<void> {
+  const to = process.env.ADMIN_NOTIFY_EMAIL ?? "admin@muziekstudioalkmaar.nl";
+  const from = process.env.EMAIL_FROM ?? `${STUDIO.name} <boekingen@booking.muziekstudioalkmaar.nl>`;
+  const dp = DAYPART_BY_ID[data.daypart];
+  const dateNl = formatDateNl(data.date);
+  const slotLabel = `${dp.label} (${dp.start}–${dp.end})`;
+  const bedrag = data.paidWithCredit
+    ? "met uren-tegoed"
+    : formatEuro(data.priceCents - (data.discountCents ?? 0)) +
+      (data.discountCents ? ` (korting ${formatEuro(data.discountCents)})` : "");
+
+  const text = `Nieuwe boeking!
+
+Datum: ${dateNl}
+Dagdeel: ${slotLabel}
+Bedrag: ${bedrag}
+
+Klant: ${data.customerName}
+E-mail: ${data.customerEmail}
+Telefoon: ${data.customerPhone}`;
+
+  const html = shell(`
+    <h1 style="margin:0 0 14px;font-family:${BRAND.display};font-size:24px;letter-spacing:0.5px;text-transform:uppercase;color:${BRAND.text};">Nieuwe boeking</h1>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${BRAND.boxBg};border:2px solid ${BRAND.border};border-left:4px solid ${BRAND.accent};margin-bottom:18px;">
+      <tr><td style="padding:16px 18px;">
+        <p style="margin:0 0 4px;color:${BRAND.text};font-weight:800;font-size:17px;">${slotLabel}</p>
+        <p style="margin:0 0 3px;color:${BRAND.blue};font-weight:700;">${dateNl}</p>
+        <p style="margin:0;color:${BRAND.accent};font-weight:700;">${bedrag}</p>
+      </td></tr>
+    </table>
+    <p style="margin:0 0 3px;"><strong style="color:${BRAND.text};">${data.customerName}</strong></p>
+    <p style="margin:0 0 3px;color:${BRAND.body};">${data.customerEmail}</p>
+    <p style="margin:0;color:${BRAND.body};">${data.customerPhone}</p>
+  `);
+
+  await resend().emails.send({ from, to, subject: `Nieuwe boeking: ${dateNl} ${slotLabel}`, text, html });
+}
+
 // ─── Herinnering vóór de sessie (minder no-shows) ────────────────────────
 
 export async function sendReminderEmail(data: BookingEmailData): Promise<void> {

@@ -37,6 +37,11 @@
 }
 
 html,
+html,
+body {
+  max-width: 100%;
+  overflow-x: hidden; /* nooit horizontaal van het scherm af */
+}
 body {
   margin: 0;
   padding: 0;
@@ -101,12 +106,17 @@ a {
   gap: 12px;
   min-width: 0;
 }
-/* Logo: getrouwe SVG-versie, geoptimaliseerd voor de donkere header. */
+/* Logo: toont jouw eigen bestand public/logo.png. Op een licht tegeltje zodat
+   het logo (met zwarte vormen) altijd zichtbaar is op de donkere header. */
 .logo-mark {
   display: block;
-  width: 122px;
-  height: 44px;
-  background: url("/logo.svg") left center / contain no-repeat;
+  width: 128px;
+  height: 48px;
+  background-color: #ffffff;
+  background-image: url("/logo.png");
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 108px auto;
   border: none;
   padding: 0;
   font-size: 0;
@@ -249,6 +259,8 @@ input[type="date"],
 input[type="number"],
 select {
   width: 100%;
+  max-width: 100%;
+  min-width: 0;
   padding: 13px 14px;
   font-size: 16px; /* voorkomt iOS-zoom */
   background: var(--bg);
@@ -256,7 +268,17 @@ select {
   color: var(--text);
   font-family: var(--font-body);
   min-height: 48px;
+  text-align: left;
   transition: border-color 0.14s var(--ease), box-shadow 0.14s var(--ease);
+}
+/* iOS/Safari: datumvelden links uitlijnen en netjes binnen de kaart houden. */
+input[type="date"] {
+  -webkit-appearance: none;
+  appearance: none;
+  display: block;
+}
+input[type="date"]::-webkit-date-and-time-value {
+  text-align: left;
 }
 input:focus,
 select:focus {
