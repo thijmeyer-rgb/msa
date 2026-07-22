@@ -86,6 +86,7 @@ export interface BookingEmailData {
   daypart: DaypartId;
   priceCents: number;
   paidWithCredit?: boolean;
+  accessCode?: string; // Nuki keypad-code, indien actief
 }
 
 export async function sendBookingConfirmation(data: BookingEmailData): Promise<void> {
@@ -99,6 +100,10 @@ export async function sendBookingConfirmation(data: BookingEmailData): Promise<v
   const from = process.env.EMAIL_FROM ?? `${STUDIO.name} <boekingen@booking.muziekstudioalkmaar.nl>`;
   const subject = `Bevestiging boeking ${STUDIO.name} — ${dateNl} ${slotLabel}`;
   const waPrefill = `Hoi! Ik heb ${slotLabel} op ${dateNl} geboekt en heb een vraag.`;
+  const entryLine = data.accessCode
+    ? `Toets bij de deur de code ${data.accessCode} in op het keypad. De code werkt rondom je dagdeel.`
+    : "Bel aan bij de deur. Ik open deze op afstand.";
+  const codeIntro = data.accessCode ? `\nJouw toegangscode voor het keypad: ${data.accessCode}\n` : "";
 
   const text = `Beste ${data.customerName},
 
@@ -106,15 +111,14 @@ Bedankt voor je boeking — dit is je bevestiging.
 
 Je hebt ${slotLabel} bij ${STUDIO.name} geboekt op ${dateNl}.
 ${priceLine}
-
+${codeIntro}
 Adres: ${STUDIO.address}
-Je krijgt toegang doordat ik de deur op afstand voor je open. Hieronder staat precies hoe je binnenkomt.
 
 Binnenkomen:
 • De voordeur (schuifdeur) staat open. Dit is de glazen deur naast het skatepark.
 • Loop naar binnen en ga naar de tweede etage.
 • Ga door de eerste deur op de verdieping. De studio is de tweede zwarte deur aan je rechterhand.
-• Bel aan bij de deur. Ik open deze op afstand.
+• ${entryLine}
 
 Licht en stroom:
 • Zet als eerste de schakelaar achter de koelkast aan. Die zorgt voor de stroom.
@@ -141,7 +145,7 @@ ${STUDIO.phone} · ${STUDIO.email}`;
     to: data.customerEmail,
     subject,
     text,
-    html: renderConfirmationHtml(data.customerName, slotLabel, dateNl, priceLine, waPrefill),
+    html: renderConfirmationHtml(data.customerName, slotLabel, dateNl, priceLine, waPrefill, data.accessCode),
     ...(process.env.STUDIO_NOTIFY_EMAIL ? { bcc: process.env.STUDIO_NOTIFY_EMAIL } : {}),
   });
 }
@@ -152,8 +156,21 @@ function renderConfirmationHtml(
   dateNl: string,
   priceLine: string,
   waPrefill: string,
+  accessCode?: string,
 ): string {
   const li = (t: string) => `<li style="margin:5px 0;">${t}</li>`;
+  const codeBox = accessCode
+    ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${BRAND.boxBg};border:2px solid ${BRAND.green};margin-bottom:22px;">
+        <tr><td style="padding:16px 18px;text-align:center;">
+          <p style="margin:0 0 4px;color:${BRAND.dim};font-size:12px;text-transform:uppercase;letter-spacing:1px;">Jouw toegangscode</p>
+          <p style="margin:0;color:${BRAND.green};font-family:${BRAND.display};font-size:30px;letter-spacing:4px;">${accessCode}</p>
+          <p style="margin:6px 0 0;color:${BRAND.dim};font-size:12px;">Toets deze in op het keypad naast de deur</p>
+        </td></tr>
+      </table>`
+    : "";
+  const entryLi = accessCode
+    ? li(`Toets bij de deur de code <strong style="color:${BRAND.green};">${accessCode}</strong> in op het keypad.`)
+    : li("Bel aan bij de deur. Ik open deze op afstand.");
   const h = (t: string) =>
     `<p style="margin:22px 0 7px;font-weight:800;font-size:12px;letter-spacing:1.5px;text-transform:uppercase;color:${BRAND.accent};">${t}</p>`;
   const ul = (items: string[]) => `<ul style="margin:0;padding-left:20px;color:${BRAND.body};">${items.join("")}</ul>`;
@@ -170,15 +187,17 @@ function renderConfirmationHtml(
       </td></tr>
     </table>
 
+    ${codeBox}
+
     <p style="margin:0 0 4px;"><strong>Adres:</strong> ${STUDIO.address}</p>
-    <p style="margin:0 0 4px;">Je krijgt toegang doordat ik de deur op afstand voor je open. Hieronder staat precies hoe je binnenkomt.</p>
+    <p style="margin:0 0 4px;">${accessCode ? "Je komt binnen met je eigen toegangscode." : "Je krijgt toegang doordat ik de deur op afstand voor je open."} Hieronder staat precies hoe je binnenkomt.</p>
 
     ${h("Binnenkomen")}
     ${ul([
       li("De voordeur (schuifdeur) staat open. Dit is de glazen deur naast het skatepark."),
       li("Loop naar binnen en ga naar de tweede etage."),
       li("Ga door de eerste deur op de verdieping. De studio is de tweede zwarte deur aan je rechterhand."),
-      li("Bel aan bij de deur. Ik open deze op afstand."),
+      entryLi,
     ])}
 
     ${h("Licht en stroom")}
@@ -416,13 +435,14 @@ function renderReviewRequestHtml(name: string, reviewUrl: string, code: string, 
 
 // ─── Preview-helpers (voor de dev-preview-route) ─────────────────────────
 
-export function previewConfirmationHtml(): string {
+export function previewConfirmationHtml(withCode = false): string {
   return renderConfirmationHtml(
     "Nout Kramer",
     "Avond (16:30 tot 19:30)",
     "25-07-2026",
     "Betaald: € 55,00 (incl. btw).",
     "Hoi! Ik heb Avond (16:30 tot 19:30) op 25-07-2026 geboekt en heb een vraag.",
+    withCode ? "428173" : undefined,
   );
 }
 

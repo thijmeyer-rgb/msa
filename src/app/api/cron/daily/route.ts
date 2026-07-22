@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { expireStalePendingBookings } from "@/lib/bookings";
 import { sendDueReminders, sendDueRecoveries, sendDueReviewRequests } from "@/lib/automations";
+import { cleanupExpiredKeypadCodes } from "@/lib/nuki";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -22,8 +23,9 @@ async function handle(request: Request) {
   const reminders = await sendDueReminders();
   const recoveries = await sendDueRecoveries();
   const reviewRequests = await sendDueReviewRequests();
+  const nukiCleaned = await cleanupExpiredKeypadCodes();
 
-  return NextResponse.json({ expired, reminders, recoveries, reviewRequests });
+  return NextResponse.json({ expired, reminders, recoveries, reviewRequests, nukiCleaned });
 }
 
 export const GET = handle;

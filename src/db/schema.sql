@@ -178,3 +178,6 @@ ALTER TABLE bookings ADD COLUMN IF NOT EXISTS reminder_sent_at TIMESTAMPTZ;
 ALTER TABLE bookings ADD COLUMN IF NOT EXISTS recovery_sent_at TIMESTAMPTZ;
 -- Review-verzoek (1 dag ná de sessie) met automatisch gegenereerde kortingscode.
 ALTER TABLE bookings ADD COLUMN IF NOT EXISTS review_requested_at TIMESTAMPTZ;
+-- Nuki: automatisch gegenereerde keypad-toegangscode per boeking (fase: klaar,
+-- actief zodra NUKI_API_TOKEN + NUKI_SMARTLOCK_ID zijn ingesteld).
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS access_code TEXT;

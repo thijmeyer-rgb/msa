@@ -15,6 +15,10 @@ export async function GET(request: Request) {
   }
   const type = new URL(request.url).searchParams.get("type");
   const html =
-    type === "login" ? previewLoginHtml() : type === "review" ? previewReviewHtml() : previewConfirmationHtml();
+    type === "login"
+      ? previewLoginHtml()
+      : type === "review"
+        ? previewReviewHtml()
+        : previewConfirmationHtml(type === "code");
   return new NextResponse(html, { headers: { "Content-Type": "text/html; charset=utf-8" } });
 }

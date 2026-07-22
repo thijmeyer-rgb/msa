@@ -7,11 +7,39 @@ import {
   PENDING_TTL_MINUTES,
   STUDIO,
   formatEuro,
+  daypartStart,
+  daypartEnd,
   type DaypartId,
 } from "@/lib/config";
 import { isSlotBookable } from "@/lib/availability";
 import { consumeCredits, grantCredits } from "@/lib/credits";
 import { validateDiscount, incrementDiscountUse } from "@/lib/discounts";
+import { isNukiEnabled, createKeypadCode } from "@/lib/nuki";
+
+/**
+ * Genereert (indien Nuki actief is) een keypad-toegangscode voor deze boeking,
+ * geldig van 15 min vóór tot 15 min ná het dagdeel. Slaat de code op de boeking
+ * op en geeft hem terug voor in de bevestigingsmail. Non-fataal.
+ */
+async function provisionAccessCode(
+  bookingId: string,
+  date: string,
+  daypart: DaypartId,
+): Promise<string | null> {
+  if (!isNukiEnabled()) return null;
+  const dp = DAYPART_BY_ID[daypart];
+  const from = new Date(daypartStart(date, dp).getTime() - 15 * 60000);
+  const until = new Date(daypartEnd(date, dp).getTime() + 15 * 60000);
+  const pin = await createKeypadCode({ name: `MSA ${date} ${dp.label}`, from, until });
+  if (pin) {
+    try {
+      await query(`UPDATE bookings SET access_code = $1 WHERE id = $2`, [pin, bookingId]);
+    } catch (err) {
+      console.error(`Toegangscode opslaan voor ${bookingId} mislukt:`, err);
+    }
+  }
+  return pin;
+}
 
 export class SlotTakenError extends Error {
   constructor() {
@@ -203,6 +231,7 @@ export async function createBookingWithCredits(input: {
     `SELECT name, email, phone FROM customers WHERE id = $1`,
     [input.customerId],
   );
+  const accessCode = await provisionAccessCode(bookingId, input.date, input.daypart);
   if (cust[0]?.email) {
     try {
       await sendBookingConfirmation({
@@ -212,6 +241,7 @@ export async function createBookingWithCredits(input: {
         daypart: input.daypart,
         priceCents: dp.priceCents,
         paidWithCredit: true,
+        accessCode: accessCode ?? undefined,
       });
     } catch (err) {
       console.error(`⚠️ Bevestigingsmail (tegoed) voor ${bookingId} mislukt:`, err);
@@ -376,6 +406,7 @@ async function markBookingPaid(molliePaymentId: string): Promise<void> {
       [result.customer_id],
     );
     if (customer[0]) {
+      const accessCode = await provisionAccessCode(result.id, result.booking_date, result.daypart);
       try {
         await sendBookingConfirmation({
           customerName: customer[0].name,
@@ -383,6 +414,7 @@ async function markBookingPaid(molliePaymentId: string): Promise<void> {
           date: result.booking_date,
           daypart: result.daypart,
           priceCents: result.price_cents,
+          accessCode: accessCode ?? undefined,
         });
       } catch (err) {
         // Mail-fout mag de boeking niet ongedaan maken; log en ga door.
