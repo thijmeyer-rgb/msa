@@ -101,12 +101,12 @@ a {
   gap: 12px;
   min-width: 0;
 }
-/* Logo: toont public/logo.png. Vervang dat bestand om het logo te wijzigen. */
+/* Logo: getrouwe SVG-versie, geoptimaliseerd voor de donkere header. */
 .logo-mark {
   display: block;
-  width: 120px;
+  width: 122px;
   height: 44px;
-  background: url("/logo.png") left center / contain no-repeat;
+  background: url("/logo.svg") left center / contain no-repeat;
   border: none;
   padding: 0;
   font-size: 0;
