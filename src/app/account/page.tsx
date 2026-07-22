@@ -2,12 +2,6 @@
 
 import { useEffect, useState, useCallback } from "react";
 
-const DAYPART_LABEL: Record<string, string> = {
-  ochtend: "Ochtend",
-  middag: "Middag",
-  avond: "Avond",
-  latenight: "Late night",
-};
 const PACKAGES = [
   { key: "basis", label: "Basis", hours: 8, price: "€95,00" },
   { key: "pro", label: "Pro", hours: 16, price: "€175,00" },
@@ -30,7 +24,7 @@ interface Me {
   profile: { name: string; email: string; phone: string };
   balanceMinutes: number;
   batches: { id: string; minutes_remaining: number; expires_at: string | null; source: string; package_key: string | null }[];
-  bookings: { id: string; booking_date: string; daypart: string; status: string; price_cents: number; paid_with_credit: boolean }[];
+  bookings: { id: string; booking_date: string; daypart: string | null; slot_label: string; status: string; price_cents: number; paid_with_credit: boolean }[];
 }
 
 export default function AccountPage() {
@@ -190,7 +184,7 @@ export default function AccountPage() {
           me.bookings.map((b) => (
             <div key={b.id} className="summary" style={{ borderTop: "1px solid var(--border)" }}>
               <span>
-                {dateNl(b.booking_date)} · {DAYPART_LABEL[b.daypart]}
+                {dateNl(b.booking_date)} · {b.slot_label}
               </span>
               <span className="muted">
                 {b.status === "pending" ? "wacht op betaling" : b.paid_with_credit ? "met tegoed" : euro(b.price_cents)}

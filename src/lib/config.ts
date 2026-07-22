@@ -175,3 +175,68 @@ export function daypartEnd(dateStr: string, daypart: Daypart): Date {
 export function formatEuro(cents: number): string {
   return "€" + (cents / 100).toFixed(2).replace(".", ",");
 }
+
+// ─── Flexibel boeken (abonnees): blok van 2 uur op vrije starttijd ────────
+
+export const FLEX_DURATION_MINUTES = 120;
+/** Studio-openingstijden waarbinnen een flexibel blok moet vallen. */
+export const STUDIO_OPEN = "10:00";
+export const STUDIO_CLOSE = "23:45";
+/** Starttijden worden per half uur aangeboden. */
+export const FLEX_STEP_MINUTES = 30;
+
+/** "HH:MM" → minuten sinds middernacht. */
+export function timeToMinutes(t: string): number {
+  const [h, m] = t.split(":").map(Number);
+  return h * 60 + m;
+}
+/** minuten sinds middernacht → "HH:MM". */
+export function minutesToTime(mins: number): string {
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+/** Mogelijke starttijden voor een flexblok (elk +2u past binnen openingstijden). */
+export function flexStartTimes(): string[] {
+  const open = timeToMinutes(STUDIO_OPEN);
+  const lastStart = timeToMinutes(STUDIO_CLOSE) - FLEX_DURATION_MINUTES;
+  const out: string[] = [];
+  for (let m = open; m <= lastStart; m += FLEX_STEP_MINUTES) out.push(minutesToTime(m));
+  return out;
+}
+
+/** Start/eind-instant (UTC) van een flexblok dat op `startTime` begint. */
+export function flexWindow(dateStr: string, startTime: string): { start: Date; end: Date } {
+  const start = amsterdamToUtc(dateStr, startTime);
+  const end = new Date(start.getTime() + FLEX_DURATION_MINUTES * 60 * 1000);
+  return { start, end };
+}
+
+/** Valideert dat een starttijd een geldig flexblok binnen openingstijden geeft. */
+export function isValidFlexStart(startTime: string): boolean {
+  if (!/^\d{2}:\d{2}$/.test(startTime)) return false;
+  const m = timeToMinutes(startTime);
+  return m >= timeToMinutes(STUDIO_OPEN) && m + FLEX_DURATION_MINUTES <= timeToMinutes(STUDIO_CLOSE);
+}
+
+/** "HH:MM" in Europe/Amsterdam voor een instant. */
+export function formatTimeAmsterdam(ts: string | Date): string {
+  return new Intl.DateTimeFormat("nl-NL", { timeZone: TIMEZONE, hour: "2-digit", minute: "2-digit" }).format(new Date(ts));
+}
+
+/** Leesbaar label voor een boeking: dagdeel óf flexibel tijdvenster. */
+export function slotLabel(
+  daypart: DaypartId | null | undefined,
+  startTs?: string | Date | null,
+  endTs?: string | Date | null,
+): string {
+  if (daypart && DAYPART_BY_ID[daypart]) {
+    const d = DAYPART_BY_ID[daypart];
+    return `${d.label} (${d.start} tot ${d.end})`;
+  }
+  if (startTs && endTs) {
+    return `Flexibel blok (${formatTimeAmsterdam(startTs)}–${formatTimeAmsterdam(endTs)})`;
+  }
+  return "je sessie";
+}

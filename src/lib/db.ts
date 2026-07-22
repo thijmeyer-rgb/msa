@@ -70,3 +70,11 @@ export function isUniqueViolation(err: unknown): boolean {
   return typeof err === "object" && err !== null && "code" in err &&
     (err as { code?: string }).code === PG_UNIQUE_VIOLATION;
 }
+
+/** Postgres-foutcode voor schending van een exclusion constraint (tijdsoverlap). */
+export const PG_EXCLUSION_VIOLATION = "23P01";
+
+export function isExclusionViolation(err: unknown): boolean {
+  return typeof err === "object" && err !== null && "code" in err &&
+    (err as { code?: string }).code === PG_EXCLUSION_VIOLATION;
+}

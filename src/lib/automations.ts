@@ -2,7 +2,7 @@ import { query } from "@/lib/db";
 import { sendReminderEmail, sendRecoveryEmail, sendReviewRequestEmail } from "@/lib/email";
 import { createAutoDiscountCode } from "@/lib/discounts";
 import { getSettings } from "@/lib/settings";
-import { TIMEZONE, type DaypartId } from "@/lib/config";
+import { TIMEZONE, slotLabel, type DaypartId } from "@/lib/config";
 
 // Standaardwaarden (overschrijfbaar via /admin/instellingen).
 const DEFAULT_REVIEW_URL = "https://g.page/r/CXQ3bsqyLYGyEBM/review";
@@ -29,11 +29,13 @@ export async function sendDueReminders(): Promise<number> {
   const rows = await query<{
     id: string;
     booking_date: string;
-    daypart: DaypartId;
+    daypart: DaypartId | null;
+    start_ts: string | null;
+    end_ts: string | null;
     name: string;
     email: string;
   }>(
-    `SELECT b.id, b.booking_date, b.daypart, c.name, c.email
+    `SELECT b.id, b.booking_date, b.daypart, b.start_ts, b.end_ts, c.name, c.email
        FROM bookings b JOIN customers c ON c.id = b.customer_id
       WHERE b.status = 'paid' AND b.booking_date = $1 AND b.reminder_sent_at IS NULL
         AND c.email <> ''`,
@@ -47,7 +49,7 @@ export async function sendDueReminders(): Promise<number> {
         customerName: b.name || "muzikant",
         customerEmail: b.email,
         date: b.booking_date,
-        daypart: b.daypart,
+        slotLabelOverride: slotLabel(b.daypart, b.start_ts, b.end_ts),
         priceCents: 0,
       });
       await query(`UPDATE bookings SET reminder_sent_at = now() WHERE id = $1`, [b.id]);
@@ -77,6 +79,7 @@ export async function sendDueRecoveries(): Promise<number> {
        FROM bookings b JOIN customers c ON c.id = b.customer_id
       WHERE b.status IN ('expired','failed','canceled')
         AND b.recovery_sent_at IS NULL
+        AND b.mollie_payment_id IS NOT NULL
         AND b.created_at >= now() - interval '3 days'
         AND b.booking_date >= $1
         AND c.email <> ''

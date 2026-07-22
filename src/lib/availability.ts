@@ -6,6 +6,9 @@ import {
   MIN_LEAD_MINUTES,
   TIMEZONE,
   daypartStart,
+  daypartEnd,
+  flexStartTimes,
+  flexWindow,
   type Daypart,
   type DaypartId,
 } from "@/lib/config";
@@ -62,17 +65,18 @@ export function isBookableInTime(dateStr: string, daypart: Daypart, now: Date = 
  * Combineert: tijdsregels + actieve boekingen + blokkades.
  */
 export async function getAvailabilityForDate(dateStr: string): Promise<SlotAvailability[]> {
-  // Actieve boekingen houden een slot bezet: 'paid' altijd, en 'pending'
-  // alleen zolang de betaaltimeout nog niet is verstreken. Zo komt een niet-
-  // betaald slot direct weer vrij, zonder afhankelijk te zijn van de cron.
-  const booked = await query<{ daypart: DaypartId }>(
-    `SELECT daypart FROM bookings
-      WHERE booking_date = $1
-        AND (status = 'paid'
-             OR (status = 'pending' AND expires_at > now()))`,
+  // Actieve boekingen (dagdeel én flex) houden hun TIJDVENSTER bezet: 'paid'
+  // altijd, 'pending' zolang de betaaltimeout niet is verstreken. Een dagdeel is
+  // bezet als een actieve boeking (ook een flexblok) eroverheen valt.
+  const active = await query<{ start_ts: string; end_ts: string }>(
+    `SELECT start_ts, end_ts FROM bookings
+      WHERE booking_date = $1 AND start_ts IS NOT NULL
+        AND (status = 'paid' OR (status = 'pending' AND expires_at > now()))`,
     [dateStr],
   );
-  const bookedSet = new Set(booked.map((b) => b.daypart));
+  const activeRanges = active.map((b) => ({ start: new Date(b.start_ts), end: new Date(b.end_ts) }));
+  const overlapsActive = (start: Date, end: Date) =>
+    activeRanges.some((r) => r.start < end && r.end > start);
 
   // Blokkades (handmatig + Google). daypart NULL = hele dag.
   const blocks = await query<{ daypart: DaypartId | null }>(
@@ -88,7 +92,7 @@ export async function getAvailabilityForDate(dateStr: string): Promise<SlotAvail
     let available = true;
     let reason: SlotAvailability["reason"];
 
-    if (bookedSet.has(dp.id)) {
+    if (overlapsActive(daypartStart(dateStr, dp), daypartEnd(dateStr, dp))) {
       available = false;
       reason = "booked";
     } else if (wholeDayBlocked || blockedSet.has(dp.id)) {
@@ -120,4 +124,47 @@ export async function isSlotBookable(dateStr: string, daypartId: DaypartId): Pro
   if (!isBookableInTime(dateStr, dp)) return false;
   const all = await getAvailabilityForDate(dateStr);
   return all.find((s) => s.daypart === daypartId)?.available ?? false;
+}
+
+/**
+ * Beschikbare starttijden voor een flexibel blok van 2 uur op een datum.
+ * Een starttijd is vrij als het blok niet overlapt met een actieve boeking of
+ * blokkade, binnen de boektermijn valt en niet binnen de leadtijd start.
+ */
+export async function getFlexAvailability(dateStr: string): Promise<{ time: string; available: boolean }[]> {
+  const all = flexStartTimes();
+  if (!isDateWithinWindow(dateStr)) return all.map((time) => ({ time, available: false }));
+
+  const active = await query<{ start_ts: string; end_ts: string }>(
+    `SELECT start_ts, end_ts FROM bookings
+      WHERE booking_date = $1 AND start_ts IS NOT NULL
+        AND (status = 'paid' OR (status = 'pending' AND expires_at > now()))`,
+    [dateStr],
+  );
+  const activeRanges = active.map((b) => ({ start: new Date(b.start_ts), end: new Date(b.end_ts) }));
+
+  const blocks = await query<{ daypart: DaypartId | null }>(
+    `SELECT daypart FROM blocks WHERE block_date = $1`,
+    [dateStr],
+  );
+  const wholeDayBlocked = blocks.some((b) => b.daypart === null);
+  const blockedRanges = blocks
+    .filter((b) => b.daypart)
+    .map((b) => {
+      const dp = DAYPART_BY_ID[b.daypart!];
+      return { start: daypartStart(dateStr, dp), end: daypartEnd(dateStr, dp) };
+    });
+
+  const now = new Date();
+  const leadMs = MIN_LEAD_MINUTES * 60 * 1000;
+
+  return all.map((time) => {
+    const { start, end } = flexWindow(dateStr, time);
+    let available = true;
+    if (wholeDayBlocked) available = false;
+    else if (start.getTime() - now.getTime() < leadMs) available = false;
+    else if (activeRanges.some((r) => r.start < end && r.end > start)) available = false;
+    else if (blockedRanges.some((r) => r.start < end && r.end > start)) available = false;
+    return { time, available };
+  });
 }

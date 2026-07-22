@@ -2,9 +2,6 @@
 
 import { use, useEffect, useState, useCallback } from "react";
 
-const DAYPART_LABEL: Record<string, string> = {
-  ochtend: "Ochtend", middag: "Middag", avond: "Avond", latenight: "Late night",
-};
 function fmtHours(m: number) {
   const h = m / 60;
   return (Number.isInteger(h) ? String(h) : h.toFixed(1).replace(".", ",")) + " uur";
@@ -21,7 +18,7 @@ interface Detail {
   profile: { name: string; email: string; phone: string };
   balanceMinutes: number;
   batches: { id: string; minutes_remaining: number; expires_at: string | null; source: string; package_key: string | null; note: string | null }[];
-  bookings: { id: string; booking_date: string; daypart: string; status: string; price_cents: number; paid_with_credit: boolean }[];
+  bookings: { id: string; booking_date: string; daypart: string | null; slot_label: string; status: string; price_cents: number; paid_with_credit: boolean }[];
   orders: { id: string; package_key: string; minutes: number; price_cents: number; status: string; created_at: string }[];
 }
 
@@ -127,7 +124,7 @@ export default function AdminCustomerDetail({ params }: { params: Promise<{ id: 
         ) : (
           d.bookings.map((b) => (
             <div key={b.id} className="summary" style={{ borderTop: "1px solid var(--border)" }}>
-              <span>{dateNl(b.booking_date)} · {DAYPART_LABEL[b.daypart]}</span>
+              <span>{dateNl(b.booking_date)} · {b.slot_label}</span>
               <span className="muted">
                 {b.status} · {b.paid_with_credit ? "tegoed" : euro(b.price_cents)}
               </span>

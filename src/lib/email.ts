@@ -83,16 +83,17 @@ export interface BookingEmailData {
   customerName: string;
   customerEmail: string;
   date: string; // YYYY-MM-DD
-  daypart: DaypartId;
+  daypart?: DaypartId;
+  slotLabelOverride?: string; // voor flexibele blokken
   priceCents: number;
   paidWithCredit?: boolean;
   accessCode?: string; // Nuki keypad-code, indien actief
 }
 
 export async function sendBookingConfirmation(data: BookingEmailData): Promise<void> {
-  const dp = DAYPART_BY_ID[data.daypart];
+  const dp = data.daypart ? DAYPART_BY_ID[data.daypart] : null;
   const dateNl = formatDateNl(data.date);
-  const slotLabel = `${dp.label} (${dp.start} tot ${dp.end})`;
+  const slotLabel = data.slotLabelOverride ?? (dp ? `${dp.label} (${dp.start} tot ${dp.end})` : "je sessie");
   const priceLine = data.paidWithCredit
     ? "Betaald met je uren-tegoed."
     : `Betaald: ${formatEuro(data.priceCents)} (incl. btw).`;
@@ -270,16 +271,17 @@ export async function sendAdminBookingNotification(data: {
   customerEmail: string;
   customerPhone: string;
   date: string;
-  daypart: DaypartId;
+  daypart?: DaypartId;
+  slotLabelOverride?: string;
   priceCents: number;
   discountCents?: number;
   paidWithCredit?: boolean;
 }): Promise<void> {
   const to = process.env.ADMIN_NOTIFY_EMAIL ?? "admin@muziekstudioalkmaar.nl";
   const from = process.env.EMAIL_FROM ?? `${STUDIO.name} <boekingen@booking.muziekstudioalkmaar.nl>`;
-  const dp = DAYPART_BY_ID[data.daypart];
+  const dp = data.daypart ? DAYPART_BY_ID[data.daypart] : null;
   const dateNl = formatDateNl(data.date);
-  const slotLabel = `${dp.label} (${dp.start}–${dp.end})`;
+  const slotLabel = data.slotLabelOverride ?? (dp ? `${dp.label} (${dp.start}–${dp.end})` : "je sessie");
   const bedrag = data.paidWithCredit
     ? "met uren-tegoed"
     : formatEuro(data.priceCents - (data.discountCents ?? 0)) +
@@ -315,9 +317,9 @@ Telefoon: ${data.customerPhone}`;
 // ─── Herinnering vóór de sessie (minder no-shows) ────────────────────────
 
 export async function sendReminderEmail(data: BookingEmailData): Promise<void> {
-  const dp = DAYPART_BY_ID[data.daypart];
+  const dp = data.daypart ? DAYPART_BY_ID[data.daypart] : null;
   const dateNl = formatDateNl(data.date);
-  const slotLabel = `${dp.label} (${dp.start} tot ${dp.end})`;
+  const slotLabel = data.slotLabelOverride ?? (dp ? `${dp.label} (${dp.start} tot ${dp.end})` : "je sessie");
   const from = process.env.EMAIL_FROM ?? `${STUDIO.name} <boekingen@booking.muziekstudioalkmaar.nl>`;
   const waPrefill = `Hoi! Ik heb ${slotLabel} op ${dateNl} geboekt.`;
 

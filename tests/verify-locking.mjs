@@ -373,6 +373,43 @@ async function main() {
     else bad("review-selectie", `kreeg ${rows.length}, verwacht 1`);
   }
 
+  // ═══ FASE 5 — flexibel boeken: overlap-bescherming ══════════════════
+  const isExcl = (e) => (e?.code ?? "") === "23P01" || /overlap|exclusion/i.test(e?.message ?? "");
+  const cf = await newCustomer("flex@example.com");
+  const insFlex = (kind, dp, s, e) =>
+    db.query(
+      `INSERT INTO bookings(booking_date,daypart,kind,status,customer_id,price_cents,start_ts,end_ts)
+       VALUES('2026-10-01',$1,$2,'paid',$3,0,$4,$5)`,
+      [dp, kind, cf, s, e]);
+
+  // ── Test 26: dagdeel blokkeert een overlappend flexblok ─────────────
+  await insFlex("daypart", "avond", "2026-10-01 16:30+02", "2026-10-01 19:30+02");
+  try {
+    await insFlex("flex", null, "2026-10-01 17:00+02", "2026-10-01 19:00+02"); // valt in avond
+    bad("flex overlap dagdeel", "overlappend flexblok werd toegestaan!");
+  } catch (e) {
+    if (isExcl(e)) ok("dagdeel blokkeert een overlappend flexblok (exclusion) ★");
+    else bad("flex overlap dagdeel", `andere fout: ${e.message}`);
+  }
+
+  // ── Test 27: flexblok blokkeert een overlappend flexblok ────────────
+  await insFlex("flex", null, "2026-10-01 10:00+02", "2026-10-01 12:00+02");
+  try {
+    await insFlex("flex", null, "2026-10-01 11:00+02", "2026-10-01 13:00+02"); // overlap 11-12
+    bad("flex overlap flex", "overlappend flexblok werd toegestaan!");
+  } catch (e) {
+    if (isExcl(e)) ok("flexblok blokkeert een overlappend flexblok ★");
+    else bad("flex overlap flex", `andere fout: ${e.message}`);
+  }
+
+  // ── Test 28: niet-overlappend flexblok mag wél ──────────────────────
+  try {
+    await insFlex("flex", null, "2026-10-01 12:00+02", "2026-10-01 14:00+02"); // sluit aan op 10-12
+    ok("aansluitend/niet-overlappend flexblok toegestaan ★");
+  } catch (e) {
+    bad("niet-overlappend flex", `onterecht geweigerd: ${e.message}`);
+  }
+
   console.log(`\n${fail === 0 ? "✅" : "❌"}  ${pass} geslaagd, ${fail} mislukt`);
   await db.close();
   process.exit(fail === 0 ? 0 : 1);

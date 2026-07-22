@@ -181,3 +181,33 @@ ALTER TABLE bookings ADD COLUMN IF NOT EXISTS review_requested_at TIMESTAMPTZ;
 -- Nuki: automatisch gegenereerde keypad-toegangscode per boeking (fase: klaar,
 -- actief zodra NUKI_API_TOKEN + NUKI_SMARTLOCK_ID zijn ingesteld).
 ALTER TABLE bookings ADD COLUMN IF NOT EXISTS access_code TEXT;
+
+-- ═══════════════════════════════════════════════════════════════════════
+--  FASE 5 — flexibel boeken (abonnees): blok van 2 uur op vrije starttijd
+-- ═══════════════════════════════════════════════════════════════════════
+
+-- Elke boeking krijgt een tijdvenster; 'daypart' = vast dagdeel, 'flex' = vrij blok.
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'daypart';
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS start_ts TIMESTAMPTZ;
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS end_ts TIMESTAMPTZ;
+ALTER TABLE bookings ALTER COLUMN daypart DROP NOT NULL; -- flex heeft geen dagdeel
+
+-- Backfill tijdvensters voor bestaande dagdeel-boekingen (Europe/Amsterdam).
+UPDATE bookings SET
+  start_ts = (booking_date + CASE daypart
+      WHEN 'ochtend' THEN time '10:00' WHEN 'middag' THEN time '13:15'
+      WHEN 'avond' THEN time '16:30' WHEN 'latenight' THEN time '19:45' END) AT TIME ZONE 'Europe/Amsterdam',
+  end_ts = (booking_date + CASE daypart
+      WHEN 'ochtend' THEN time '13:00' WHEN 'middag' THEN time '16:15'
+      WHEN 'avond' THEN time '19:30' WHEN 'latenight' THEN time '23:45' END) AT TIME ZONE 'Europe/Amsterdam'
+WHERE start_ts IS NULL AND daypart IS NOT NULL;
+
+-- ★ Overlap-garantie: twee actieve boekingen mogen nooit in tijd overlappen
+--   (dagdeel én flex). Waterdicht op databaseniveau via een exclusion constraint.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'bookings_no_overlap') THEN
+    ALTER TABLE bookings ADD CONSTRAINT bookings_no_overlap
+      EXCLUDE USING gist (tstzrange(start_ts, end_ts) WITH &&)
+      WHERE (status IN ('pending','paid') AND start_ts IS NOT NULL);
+  END IF;
+END $$;

@@ -1,5 +1,5 @@
 import type { PoolClient } from "pg";
-import { withTransaction, query, isUniqueViolation } from "@/lib/db";
+import { withTransaction, query, isUniqueViolation, isExclusionViolation } from "@/lib/db";
 import { mollie, mollieAmount } from "@/lib/mollie";
 import { sendBookingConfirmation, sendAdminBookingNotification } from "@/lib/email";
 import {
@@ -9,9 +9,14 @@ import {
   formatEuro,
   daypartStart,
   daypartEnd,
+  flexWindow,
+  isValidFlexStart,
+  slotLabel,
+  MIN_LEAD_MINUTES,
+  FLEX_DURATION_MINUTES,
   type DaypartId,
 } from "@/lib/config";
-import { isSlotBookable } from "@/lib/availability";
+import { isSlotBookable, isDateWithinWindow } from "@/lib/availability";
 import { consumeCredits, grantCredits } from "@/lib/credits";
 import { validateDiscount, incrementDiscountUse } from "@/lib/discounts";
 import { isNukiEnabled, createKeypadCode } from "@/lib/nuki";
@@ -23,14 +28,15 @@ import { isNukiEnabled, createKeypadCode } from "@/lib/nuki";
  */
 async function provisionAccessCode(
   bookingId: string,
-  date: string,
-  daypart: DaypartId,
+  from: Date,
+  until: Date,
+  label: string,
 ): Promise<string | null> {
   if (!isNukiEnabled()) return null;
-  const dp = DAYPART_BY_ID[daypart];
-  const from = new Date(daypartStart(date, dp).getTime() - 15 * 60000);
-  const until = new Date(daypartEnd(date, dp).getTime() + 15 * 60000);
-  const pin = await createKeypadCode({ name: `MSA ${date} ${dp.label}`, from, until });
+  // 15 min speling rond het tijdvenster.
+  const codeFrom = new Date(from.getTime() - 15 * 60000);
+  const codeUntil = new Date(until.getTime() + 15 * 60000);
+  const pin = await createKeypadCode({ name: `MSA ${label}`, from: codeFrom, until: codeUntil });
   if (pin) {
     try {
       await query(`UPDATE bookings SET access_code = $1 WHERE id = $2`, [pin, bookingId]);
@@ -128,17 +134,17 @@ export async function createBookingAndPayment(input: CreateBookingInput): Promis
     try {
       const rows = await client.query<{ id: string }>(
         `INSERT INTO bookings
-           (booking_date, daypart, status, customer_id, price_cents, num_people, expires_at,
-            discount_code_id, discount_cents)
-         VALUES ($1, $2, 'pending', $3, $4, $5, $6, $7, $8)
+           (booking_date, daypart, kind, status, customer_id, price_cents, num_people, expires_at,
+            discount_code_id, discount_cents, start_ts, end_ts)
+         VALUES ($1, $2, 'daypart', 'pending', $3, $4, $5, $6, $7, $8, $9, $10)
          RETURNING id`,
         [input.date, input.daypart, customerId, dp.priceCents, input.numPeople ?? null, expiresAt,
-         discountCodeId, discountCents],
+         discountCodeId, discountCents, daypartStart(input.date, dp), daypartEnd(input.date, dp)],
       );
       return rows.rows[0].id;
     } catch (err) {
-      // Unieke-sleutel-schending = slot al door een ander vergrendeld.
-      if (isUniqueViolation(err)) throw new SlotTakenError();
+      // Unieke-sleutel- of overlap-schending = slot al door een ander vergrendeld.
+      if (isUniqueViolation(err) || isExclusionViolation(err)) throw new SlotTakenError();
       throw err;
     }
   });
@@ -209,15 +215,16 @@ export async function createBookingWithCredits(input: {
     try {
       const rows = await client.query<{ id: string }>(
         `INSERT INTO bookings
-           (booking_date, daypart, status, customer_id, price_cents, num_people,
-            paid_with_credit, credit_minutes_used)
-         VALUES ($1,$2,'paid',$3,$4,$5,true,$6)
+           (booking_date, daypart, kind, status, customer_id, price_cents, num_people,
+            paid_with_credit, credit_minutes_used, start_ts, end_ts)
+         VALUES ($1,$2,'daypart','paid',$3,$4,$5,true,$6,$7,$8)
          RETURNING id`,
-        [input.date, input.daypart, input.customerId, dp.priceCents, input.numPeople ?? null, minutes],
+        [input.date, input.daypart, input.customerId, dp.priceCents, input.numPeople ?? null, minutes,
+         daypartStart(input.date, dp), daypartEnd(input.date, dp)],
       );
       id = rows.rows[0].id;
     } catch (err) {
-      if (isUniqueViolation(err)) throw new SlotTakenError();
+      if (isUniqueViolation(err) || isExclusionViolation(err)) throw new SlotTakenError();
       throw err;
     }
 
@@ -231,7 +238,12 @@ export async function createBookingWithCredits(input: {
     `SELECT name, email, phone FROM customers WHERE id = $1`,
     [input.customerId],
   );
-  const accessCode = await provisionAccessCode(bookingId, input.date, input.daypart);
+  const accessCode = await provisionAccessCode(
+    bookingId,
+    daypartStart(input.date, dp),
+    daypartEnd(input.date, dp),
+    slotLabel(input.daypart),
+  );
   if (cust[0]?.email) {
     try {
       await sendBookingConfirmation({
@@ -259,6 +271,85 @@ export async function createBookingWithCredits(input: {
     });
   } catch (err) {
     console.error(`⚠️ Admin-notificatie (tegoed) voor ${bookingId} mislukt:`, err);
+  }
+
+  return { bookingId };
+}
+
+/**
+ * Boekt een FLEXIBEL blok van 2 uur op een vrije starttijd (alleen abonnees,
+ * betaald met tegoed). Overlap met dagdelen of andere flexblokken wordt op
+ * databaseniveau uitgesloten (exclusion constraint) → bij overlap SlotTakenError.
+ */
+export async function createFlexBookingWithCredits(input: {
+  customerId: string;
+  date: string;
+  startTime: string; // "HH:MM"
+}): Promise<{ bookingId: string }> {
+  if (!isDateWithinWindow(input.date)) throw new SlotNotBookableError();
+  if (!isValidFlexStart(input.startTime))
+    throw new SlotNotBookableError("Ongeldige starttijd voor een blok van 2 uur.");
+  const { start, end } = flexWindow(input.date, input.startTime);
+  if (start.getTime() - Date.now() < MIN_LEAD_MINUTES * 60000)
+    throw new SlotNotBookableError("Te kort dag — kies een latere starttijd.");
+
+  const minutes = FLEX_DURATION_MINUTES;
+
+  const bookingId = await withTransaction(async (client) => {
+    let id: string;
+    try {
+      const rows = await client.query<{ id: string }>(
+        `INSERT INTO bookings
+           (booking_date, daypart, kind, status, customer_id, price_cents,
+            paid_with_credit, credit_minutes_used, start_ts, end_ts)
+         VALUES ($1, NULL, 'flex', 'paid', $2, 0, true, $3, $4, $5)
+         RETURNING id`,
+        [input.date, input.customerId, minutes, start, end],
+      );
+      id = rows.rows[0].id;
+    } catch (err) {
+      // Overlap met een dagdeel of ander flexblok → tijd al bezet.
+      if (isExclusionViolation(err) || isUniqueViolation(err)) throw new SlotTakenError();
+      throw err;
+    }
+    await consumeCredits(client, input.customerId, minutes);
+    return id;
+  });
+
+  // Bevestiging + admin-notificatie + toegangscode.
+  const label = slotLabel(null, start, end);
+  const accessCode = await provisionAccessCode(bookingId, start, end, label);
+  const cust = await query<{ name: string; email: string; phone: string }>(
+    `SELECT name, email, phone FROM customers WHERE id = $1`,
+    [input.customerId],
+  );
+  if (cust[0]?.email) {
+    try {
+      await sendBookingConfirmation({
+        customerName: cust[0].name || "muzikant",
+        customerEmail: cust[0].email,
+        date: input.date,
+        slotLabelOverride: label,
+        priceCents: 0,
+        paidWithCredit: true,
+        accessCode: accessCode ?? undefined,
+      });
+    } catch (err) {
+      console.error(`⚠️ Bevestigingsmail (flex) voor ${bookingId} mislukt:`, err);
+    }
+  }
+  try {
+    await sendAdminBookingNotification({
+      customerName: cust[0]?.name || "muzikant",
+      customerEmail: cust[0]?.email ?? "",
+      customerPhone: cust[0]?.phone ?? "",
+      date: input.date,
+      slotLabelOverride: label,
+      priceCents: 0,
+      paidWithCredit: true,
+    });
+  } catch (err) {
+    console.error(`⚠️ Admin-notificatie (flex) voor ${bookingId} mislukt:`, err);
   }
 
   return { bookingId };
@@ -406,7 +497,13 @@ async function markBookingPaid(molliePaymentId: string): Promise<void> {
       [result.customer_id],
     );
     if (customer[0]) {
-      const accessCode = await provisionAccessCode(result.id, result.booking_date, result.daypart);
+      const rdp = DAYPART_BY_ID[result.daypart];
+      const accessCode = await provisionAccessCode(
+        result.id,
+        daypartStart(result.booking_date, rdp),
+        daypartEnd(result.booking_date, rdp),
+        slotLabel(result.daypart),
+      );
       try {
         await sendBookingConfirmation({
           customerName: customer[0].name,

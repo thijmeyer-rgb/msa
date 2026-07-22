@@ -43,7 +43,15 @@
       "Bash(curl -s -o /dev/null \"http://localhost:3000/api/public/social\")",
       "Bash(curl -s http://localhost:3000/api/public/social)",
       "Bash(curl -s -H \"Authorization: Bearer local-cron-secret\" http://localhost:3000/api/cron/daily)",
-      "Bash(rm -f tests/seed-omzet.mjs)"
+      "Bash(rm -f tests/seed-omzet.mjs)",
+      "Bash(cp /tmp/excl-test.mjs tests/excl-test.mjs)",
+      "Bash(node tests/excl-test.mjs)",
+      "Bash(rm -f tests/excl-test.mjs)",
+      "Bash(node tests/seed-flex.mjs)",
+      "Bash(curl -s -o /dev/null \"http://localhost:3000/api/flex-availability?date=2026-08-03\")",
+      "Bash(curl -s \"http://localhost:3000/api/flex-availability?date=2026-08-03\")",
+      "Bash(node -e 'const d=JSON.parse\\(require\\(\"fs\"\\).readFileSync\\(0\\)\\);console.log\\(d.slots.map\\(s=>s.time+\\(s.available?\"✓\":\"✗\"\\)\\).join\\(\"  \"\\)\\)')",
+      "Bash(curl -s -o /dev/null \"http://localhost:3000/api/availability?date=2026-08-03\")"
     ]
   }
 }

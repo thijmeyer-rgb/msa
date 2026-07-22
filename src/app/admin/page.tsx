@@ -6,7 +6,8 @@ import StatsOverview from "./StatsOverview";
 interface Booking {
   id: string;
   booking_date: string;
-  daypart: string;
+  daypart: string | null;
+  slot_label: string;
   status: string;
   price_cents: number;
   num_people: number | null;
@@ -174,7 +175,7 @@ export default function AdminPage() {
             >
               <div>
                 <strong>
-                  {dateNl(b.booking_date)} · {DAYPART_LABEL[b.daypart]}
+                  {dateNl(b.booking_date)} · {b.slot_label}
                 </strong>
                 <div className="muted" style={{ fontSize: 14 }}>
                   {b.customer_name} · {b.customer_email} · {b.customer_phone}

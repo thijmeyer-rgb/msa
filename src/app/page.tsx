@@ -22,6 +22,12 @@ function euro(cents: number): string {
   return "€" + (cents / 100).toFixed(2).replace(".", ",");
 }
 
+function addTwoHours(hhmm: string): string {
+  const [h, m] = hhmm.split(":").map(Number);
+  const t = h * 60 + m + 120;
+  return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
+}
+
 function todayStr(): string {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: "Europe/Amsterdam",
@@ -87,6 +93,11 @@ export default function BookingPage() {
   const [discount, setDiscount] = useState<{ code: string; discountCents: number; finalCents: number } | null>(null);
   const [discountMsg, setDiscountMsg] = useState<string | null>(null);
 
+  // Flexibel boeken (abonnees): mode + starttijden
+  const [mode, setMode] = useState<"daypart" | "flex">("daypart");
+  const [flexSlots, setFlexSlots] = useState<{ time: string; available: boolean }[] | null>(null);
+  const [flexTime, setFlexTime] = useState<string | null>(null);
+
   // Social proof (admin-instelbaar)
   const [social, setSocial] = useState<{ rating: string; count: string } | null>(null);
   useEffect(() => {
@@ -137,6 +148,47 @@ export default function BookingPage() {
     setDiscount(null);
     setDiscountMsg(null);
   }, [selected]);
+
+  const canFlex = loggedIn && balanceMinutes >= 120;
+
+  // Flex-beschikbaarheid laden bij datum/mode-wissel.
+  useEffect(() => {
+    if (mode !== "flex" || !date) return;
+    setFlexSlots(null);
+    setFlexTime(null);
+    fetch(`/api/flex-availability?date=${date}`)
+      .then((r) => r.json())
+      .then((d) => setFlexSlots(d.slots ?? []))
+      .catch(() => setFlexSlots([]));
+  }, [mode, date]);
+
+  async function handleFlexBooking() {
+    if (!flexTime) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/bookings/flex", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date, startTime: flexTime }),
+      });
+      const d = await res.json();
+      if (!res.ok) {
+        setError(d.error ?? "Er ging iets mis.");
+        if (d.code === "slot_taken") {
+          const fresh = await fetch(`/api/flex-availability?date=${date}`).then((r) => r.json());
+          setFlexSlots(fresh.slots ?? []);
+          setFlexTime(null);
+        }
+        setSubmitting(false);
+        return;
+      }
+      window.location.href = `/boeking/${d.bookingId}`;
+    } catch {
+      setError("Kon niet boeken. Probeer het opnieuw.");
+      setSubmitting(false);
+    }
+  }
 
   async function applyDiscount() {
     if (!selectedSlot || !discountCode.trim()) return;
@@ -294,7 +346,62 @@ export default function BookingPage() {
         />
       </div>
 
+      {canFlex && (
+        <div className="mode-toggle">
+          <button type="button" className={mode === "daypart" ? "active" : ""} onClick={() => setMode("daypart")}>
+            Dagdeel
+          </button>
+          <button type="button" className={mode === "flex" ? "active" : ""} onClick={() => setMode("flex")}>
+            Flexibel 2 uur
+          </button>
+        </div>
+      )}
+
+      {/* Stap 2: flexibel blok (abonnees) */}
+      {mode === "flex" && (
+        <div className="card">
+          <p className="step-label">2 · Kies een starttijd (2 uur)</p>
+          {!flexSlots && (
+            <p className="muted"><span className="spinner" /> &nbsp;Beschikbaarheid laden…</p>
+          )}
+          {flexSlots && flexSlots.every((s) => !s.available) && (
+            <p className="muted">Geen vrije starttijd op deze datum. Kies een andere dag.</p>
+          )}
+          {flexSlots && flexSlots.some((s) => s.available) && (
+            <div className="flex-times">
+              {flexSlots.map((s) => (
+                <button
+                  key={s.time}
+                  type="button"
+                  className={`flex-time${flexTime === s.time ? " selected" : ""}`}
+                  disabled={!s.available}
+                  onClick={() => setFlexTime(s.time)}
+                >
+                  {s.time}
+                </button>
+              ))}
+            </div>
+          )}
+          {flexTime && (
+            <>
+              <div className="summary">
+                <span className="muted">Flexibel blok · {flexTime}–{addTwoHours(flexTime)}</span>
+                <span className="total">2 uur</span>
+              </div>
+              <button className="primary" disabled={submitting} onClick={handleFlexBooking}>
+                {submitting ? "Bezig…" : "Boek 2 uur met tegoed"}
+              </button>
+              <p className="muted" style={{ marginTop: 10, fontSize: 13, textTransform: "none", letterSpacing: 0 }}>
+                Er worden 2 uur van je tegoed afgeboekt. Direct definitief.
+              </p>
+            </>
+          )}
+          {error && <div className="error">{error}</div>}
+        </div>
+      )}
+
       {/* Stap 2: dagdeel */}
+      {mode === "daypart" && (
       <div className="card">
         <p className="step-label">2 · Kies een dagdeel</p>
         {!loadingSlots && slots && (() => {
@@ -342,9 +449,10 @@ export default function BookingPage() {
           </p>
         )}
       </div>
+      )}
 
       {/* Stap 3: gegevens */}
-      {selectedSlot && (
+      {mode === "daypart" && selectedSlot && (
         <div className="card">
           <p className="step-label">3 · Jouw gegevens</p>
           <label htmlFor="name">Naam</label>
