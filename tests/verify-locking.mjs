@@ -316,6 +316,38 @@ async function main() {
   if (after === before + 1) ok("gebruiksteller correct opgehoogd bij bevestigde betaling");
   else bad("gebruiksteller", `${before} → ${after}`);
 
+  // ═══ FASE 4 — e-mail-automatiseringen (selectie-logica) ═════════════
+  const ca = await newCustomer("autom@example.com");
+
+  // ── Test 22: reminder pikt morgen-betaald-nog-niet-gemaild ──────────
+  await db.query(`INSERT INTO bookings(booking_date,daypart,status,customer_id,price_cents) VALUES(current_date+1,'avond','paid',$1,5500)`,[ca]);
+  await db.query(`INSERT INTO bookings(booking_date,daypart,status,customer_id,price_cents,reminder_sent_at) VALUES(current_date+1,'ochtend','paid',$1,4500, now())`,[ca]); // al gemaild
+  await db.query(`INSERT INTO bookings(booking_date,daypart,status,customer_id,price_cents) VALUES(current_date+5,'avond','paid',$1,5500)`,[ca]); // niet morgen
+  {
+    const rows = (await db.query(
+      `SELECT b.id FROM bookings b JOIN customers c ON c.id=b.customer_id
+        WHERE b.status='paid' AND b.booking_date=current_date+1 AND b.reminder_sent_at IS NULL AND c.email<>''`)).rows;
+    if (rows.length === 1) ok("reminder selecteert alleen morgen-betaald-nog-niet-gemaild ★");
+    else bad("reminder-selectie", `kreeg ${rows.length}, verwacht 1`);
+  }
+
+  // ── Test 23: recovery pikt recent afgehaakt, niet als slot betaald is ─
+  const cb = await newCustomer("recov@example.com");
+  await db.query(`INSERT INTO bookings(booking_date,daypart,status,customer_id,price_cents,created_at) VALUES(current_date+2,'middag','expired',$1,5500, now())`,[cb]); // recover-kandidaat
+  // afgehaakt maar slot inmiddels door ander betaald → NIET mailen
+  await db.query(`INSERT INTO bookings(booking_date,daypart,status,customer_id,price_cents,created_at) VALUES(current_date+2,'avond','expired',$1,5500, now())`,[cb]);
+  await db.query(`INSERT INTO bookings(booking_date,daypart,status,customer_id,price_cents) VALUES(current_date+2,'avond','paid',$1,5500)`,[cb]);
+  {
+    const rows = (await db.query(
+      `SELECT b.id, b.daypart FROM bookings b JOIN customers c ON c.id=b.customer_id
+        WHERE b.status IN ('expired','failed','canceled') AND b.recovery_sent_at IS NULL
+          AND b.created_at >= now() - interval '3 days' AND b.booking_date = current_date+2 AND c.email<>''
+          AND NOT EXISTS (SELECT 1 FROM bookings p WHERE p.booking_date=b.booking_date AND p.daypart=b.daypart AND p.status='paid')`)).rows;
+    const daydelen = rows.map(r=>r.daypart);
+    if (rows.length === 1 && daydelen[0] === 'middag') ok("recovery mailt afgehaakte, maar niet als het slot al betaald is ★");
+    else bad("recovery-selectie", `kreeg ${JSON.stringify(daydelen)}, verwacht ['middag']`);
+  }
+
   console.log(`\n${fail === 0 ? "✅" : "❌"}  ${pass} geslaagd, ${fail} mislukt`);
   await db.close();
   process.exit(fail === 0 ? 0 : 1);

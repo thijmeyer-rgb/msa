@@ -5,13 +5,18 @@ import { useEffect, useState } from "react";
 export default function AdminSettingsPage() {
   const [gaId, setGaId] = useState("");
   const [metaPixelId, setMetaPixelId] = useState("");
+  const [reviewRating, setReviewRating] = useState("");
+  const [reviewCount, setReviewCount] = useState("");
   const [msg, setMsg] = useState("");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetch("/api/admin/settings", { cache: "no-store" })
       .then((r) => r.json())
-      .then((d) => { setGaId(d.gaId ?? ""); setMetaPixelId(d.metaPixelId ?? ""); })
+      .then((d) => {
+        setGaId(d.gaId ?? ""); setMetaPixelId(d.metaPixelId ?? "");
+        setReviewRating(d.reviewRating ?? ""); setReviewCount(d.reviewCount ?? "");
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -20,7 +25,10 @@ export default function AdminSettingsPage() {
     const res = await fetch("/api/admin/settings", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ gaId: gaId.trim(), metaPixelId: metaPixelId.trim() }),
+      body: JSON.stringify({
+        gaId: gaId.trim(), metaPixelId: metaPixelId.trim(),
+        reviewRating: reviewRating.trim(), reviewCount: reviewCount.trim(),
+      }),
     });
     setMsg(res.ok ? "Opgeslagen ✓" : "Kon niet opslaan");
     setTimeout(() => setMsg(""), 2500);
@@ -53,6 +61,26 @@ export default function AdminSettingsPage() {
           </>
         )}
       </div>
+
+      {!loading && (
+        <div className="card">
+          <p className="step-label">Social proof (op de boekingspagina)</p>
+          <div className="form-grid">
+            <div>
+              <label htmlFor="rr">Reviewscore</label>
+              <input id="rr" type="text" value={reviewRating} placeholder="4,9" onChange={(e) => setReviewRating(e.target.value)} />
+            </div>
+            <div>
+              <label htmlFor="rc">Aantal / label</label>
+              <input id="rc" type="text" value={reviewCount} placeholder="120+ opnames" onChange={(e) => setReviewCount(e.target.value)} />
+            </div>
+          </div>
+          <button className="primary" onClick={save}>Opslaan</button>
+          <p className="muted" style={{ marginTop: 12, fontSize: 13, textTransform: "none", letterSpacing: 0 }}>
+            Toont bijv. “★ 4,9 · 120+ opnames” bovenaan de boekingspagina. Laat leeg om te verbergen.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

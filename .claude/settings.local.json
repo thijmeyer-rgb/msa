@@ -39,7 +39,11 @@
       "Bash(curl -s -X POST http://localhost:3000/api/discount/validate -H \"Content-Type: application/json\" -d '{\"code\":\"ZOMER10\",\"daypart\":\"avond\"}')",
       "Bash(curl -s -X POST http://localhost:3000/api/discount/validate -H \"Content-Type: application/json\" -d '{\"code\":\"WELKOM5\",\"daypart\":\"ochtend\"}')",
       "Bash(curl -s -X POST http://localhost:3000/api/discount/validate -H \"Content-Type: application/json\" -d '{\"code\":\"NIETBESTAAND\",\"daypart\":\"avond\"}')",
-      "Bash(rm -f tests/seed-disc.mjs tests/seed-stats.mjs)"
+      "Bash(rm -f tests/seed-disc.mjs tests/seed-stats.mjs)",
+      "Bash(curl -s -o /dev/null \"http://localhost:3000/api/public/social\")",
+      "Bash(curl -s http://localhost:3000/api/public/social)",
+      "Bash(curl -s -H \"Authorization: Bearer local-cron-secret\" http://localhost:3000/api/cron/daily)",
+      "Bash(rm -f tests/seed-omzet.mjs)"
     ]
   }
 }

@@ -244,6 +244,77 @@ function renderLoginHtml(link: string): string {
   `);
 }
 
+// ─── Herinnering vóór de sessie (minder no-shows) ────────────────────────
+
+export async function sendReminderEmail(data: BookingEmailData): Promise<void> {
+  const dp = DAYPART_BY_ID[data.daypart];
+  const dateNl = formatDateNl(data.date);
+  const slotLabel = `${dp.label} (${dp.start} tot ${dp.end})`;
+  const from = process.env.EMAIL_FROM ?? `${STUDIO.name} <boekingen@booking.muziekstudioalkmaar.nl>`;
+  const waPrefill = `Hoi! Ik heb ${slotLabel} op ${dateNl} geboekt.`;
+
+  const text = `Beste ${data.customerName},
+
+Kleine herinnering: morgen sta je in ${STUDIO.name}!
+
+${slotLabel} — ${dateNl}
+Adres: ${STUDIO.address}
+
+Tot dan! Kom je ergens niet uit, app ons op ${STUDIO.whatsapp} (${waLink()}).
+
+${STUDIO.name}`;
+
+  const html = shell(`
+    <h1 style="margin:0 0 4px;font-family:${BRAND.display};font-size:26px;letter-spacing:0.5px;text-transform:uppercase;color:${BRAND.text};">Tot morgen!</h1>
+    <p style="margin:0 0 20px;color:${BRAND.dim};">Beste ${data.customerName}, kleine herinnering aan je sessie.</p>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${BRAND.boxBg};border:2px solid ${BRAND.border};border-left:4px solid ${BRAND.accent};margin-bottom:22px;">
+      <tr><td style="padding:16px 18px;">
+        <p style="margin:0 0 4px;color:${BRAND.text};font-weight:800;font-size:17px;">${slotLabel}</p>
+        <p style="margin:0;color:${BRAND.blue};font-weight:700;">${dateNl} · ${STUDIO.address}</p>
+      </td></tr>
+    </table>
+    <p style="margin:0 0 12px;">We kijken ernaar uit! Kom je ergens niet uit, laat het weten.</p>
+    <p style="margin:0 0 6px;">${waButton(waPrefill)}</p>
+  `);
+
+  await resend().emails.send({ from, to: data.customerEmail, subject: `Tot morgen bij ${STUDIO.name} — ${slotLabel}`, text, html });
+}
+
+// ─── Verlaten-boeking-herinnering (recovery) ─────────────────────────────
+
+export async function sendRecoveryEmail(data: {
+  customerName: string;
+  customerEmail: string;
+  date: string;
+  daypart: DaypartId;
+}): Promise<void> {
+  const dp = DAYPART_BY_ID[data.daypart];
+  const dateNl = formatDateNl(data.date);
+  const slotLabel = `${dp.label} (${dp.start} tot ${dp.end})`;
+  const from = process.env.EMAIL_FROM ?? `${STUDIO.name} <boekingen@booking.muziekstudioalkmaar.nl>`;
+  const base = process.env.NEXT_PUBLIC_BASE_URL ?? "https://booking.muziekstudioalkmaar.nl";
+
+  const text = `Beste ${data.customerName},
+
+Je was bijna klaar met het boeken van ${slotLabel} (${dateNl}) bij ${STUDIO.name}, maar de betaling is niet afgerond. Het dagdeel is mogelijk nog vrij!
+
+Rond je boeking af: ${base}
+
+Tot snel,
+${STUDIO.name}`;
+
+  const html = shell(`
+    <h1 style="margin:0 0 4px;font-family:${BRAND.display};font-size:26px;letter-spacing:0.5px;text-transform:uppercase;color:${BRAND.text};">Bijna geboekt…</h1>
+    <p style="margin:0 0 20px;color:${BRAND.dim};">Beste ${data.customerName}, je boeking is nog niet afgerond.</p>
+    <p style="margin:0 0 18px;">Je was bezig met <strong style="color:${BRAND.text};">${slotLabel}</strong> op ${dateNl}, maar de betaling is niet voltooid. Het dagdeel is mogelijk nog vrij — rond je boeking snel af voordat iemand anders het pakt.</p>
+    <p style="margin:0 0 6px;">
+      <a href="${base}" style="background:${BRAND.accent};color:${BRAND.dark};text-decoration:none;padding:13px 26px;display:inline-block;border:2px solid ${BRAND.dark};box-shadow:3px 3px 0 0 #f5f5f5;font-family:${BRAND.display};font-size:16px;letter-spacing:0.6px;text-transform:uppercase;">Boeking afronden</a>
+    </p>
+  `);
+
+  await resend().emails.send({ from, to: data.customerEmail, subject: `Je boeking bij ${STUDIO.name} is nog niet afgerond`, text, html });
+}
+
 // ─── Preview-helpers (voor de dev-preview-route) ─────────────────────────
 
 export function previewConfirmationHtml(): string {

@@ -87,6 +87,15 @@ export default function BookingPage() {
   const [discount, setDiscount] = useState<{ code: string; discountCents: number; finalCents: number } | null>(null);
   const [discountMsg, setDiscountMsg] = useState<string | null>(null);
 
+  // Social proof (admin-instelbaar)
+  const [social, setSocial] = useState<{ rating: string; count: string } | null>(null);
+  useEffect(() => {
+    fetch("/api/public/social")
+      .then((r) => r.json())
+      .then((d) => { if (d.rating || d.count) setSocial(d); })
+      .catch(() => {});
+  }, []);
+
   useEffect(() => {
     fetch("/api/account/me", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
@@ -240,10 +249,23 @@ export default function BookingPage() {
       <p className="tagline">
         <span className="accent-green">Plug &amp; play</span> — kom binnen en neem direct op.
       </p>
+      {social && (
+        <p className="social-proof">
+          <span className="stars">★</span> {social.rating && <strong>{social.rating}</strong>}
+          {social.rating && social.count ? " · " : ""}
+          {social.count}
+        </p>
+      )}
       {loggedIn && balanceMinutes > 0 && (
-        <p className="muted" style={{ marginTop: -14, marginBottom: 22 }}>
+        <p className="muted" style={{ marginTop: -6, marginBottom: 22 }}>
           Je hebt <strong style={{ color: "var(--yellow)" }}>{fmtHours(balanceMinutes)}</strong> tegoed.
         </p>
+      )}
+      {!loggedIn && (
+        <a className="upsell" href="/account/login">
+          <span>Vaak in de studio? Met een <strong>urenpakket</strong> boek je voordeliger.</span>
+          <span className="upsell-arrow">→</span>
+        </a>
       )}
 
       {/* Stap 1: datum */}
@@ -275,6 +297,15 @@ export default function BookingPage() {
       {/* Stap 2: dagdeel */}
       <div className="card">
         <p className="step-label">2 · Kies een dagdeel</p>
+        {!loadingSlots && slots && (() => {
+          const n = slots.filter((s) => s.available).length;
+          if (n === 0) return null;
+          return (
+            <p className={`scarcity${n === 1 ? " hot" : ""}`}>
+              {n === 1 ? "Bijna vol — nog 1 dagdeel vrij!" : `Nog ${n} van 4 dagdelen vrij`}
+            </p>
+          );
+        })()}
         {loadingSlots && (
           <p className="muted">
             <span className="spinner" /> &nbsp;Beschikbaarheid laden…

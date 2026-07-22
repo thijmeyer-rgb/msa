@@ -171,3 +171,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS discount_codes_code_idx ON discount_codes (upp
 -- Kortingskoppeling op boekingen.
 ALTER TABLE bookings ADD COLUMN IF NOT EXISTS discount_code_id UUID REFERENCES discount_codes(id);
 ALTER TABLE bookings ADD COLUMN IF NOT EXISTS discount_cents INTEGER NOT NULL DEFAULT 0;
+
+-- E-mail-automatiseringen (herinnering vóór sessie + verlaten-boeking-recovery).
+-- We houden bij wanneer welke mail is verstuurd zodat er nooit dubbel wordt gemaild.
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS reminder_sent_at TIMESTAMPTZ;
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS recovery_sent_at TIMESTAMPTZ;
