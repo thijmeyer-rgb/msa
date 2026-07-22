@@ -51,7 +51,16 @@
       "Bash(curl -s -o /dev/null \"http://localhost:3000/api/flex-availability?date=2026-08-03\")",
       "Bash(curl -s \"http://localhost:3000/api/flex-availability?date=2026-08-03\")",
       "Bash(node -e 'const d=JSON.parse\\(require\\(\"fs\"\\).readFileSync\\(0\\)\\);console.log\\(d.slots.map\\(s=>s.time+\\(s.available?\"✓\":\"✗\"\\)\\).join\\(\"  \"\\)\\)')",
-      "Bash(curl -s -o /dev/null \"http://localhost:3000/api/availability?date=2026-08-03\")"
+      "Bash(curl -s -o /dev/null \"http://localhost:3000/api/availability?date=2026-08-03\")",
+      "Bash(npx tsc *)",
+      "Bash(npm run *)",
+      "Bash(curl -s -b cookies.txt -w \"\\\\n%{http_code}\\\\n\" -X DELETE http://localhost:3000/api/admin/customers/5b5ac22f-9d15-49d1-82c5-b165bd2172bc)",
+      "Bash(curl -s -b cookies.txt http://localhost:3000/api/admin/customers)",
+      "Bash(python3 -c 'import sys,json; print\\([c[\"name\"] for c in json.load\\(sys.stdin\\)[\"customers\"]]\\)')",
+      "Bash(cp /tmp/ins.mjs ./_ins.mjs)",
+      "Bash(node _ins.mjs)",
+      "Bash(rm -f ./_ins.mjs)",
+      "Bash(jobs)"
     ]
   }
 }

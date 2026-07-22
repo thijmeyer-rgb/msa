@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { query } from "@/lib/db";
+import { query, withTransaction } from "@/lib/db";
 import { getBalanceMinutes, getActiveBatches } from "@/lib/credits";
 import { slotLabel, type DaypartId } from "@/lib/config";
 
@@ -35,4 +35,53 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   );
 
   return NextResponse.json({ profile, balanceMinutes, batches, bookings, orders });
+}
+
+/**
+ * DELETE /api/admin/customers/:id — verwijdert een klant volledig, inclusief
+ * boekingshistorie, tegoed-batches en pakket-orders. Geweigerd zolang de klant
+ * nog een actieve (pending/paid, toekomstige) boeking heeft.
+ */
+export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+
+  try {
+    const result = await withTransaction(async (client) => {
+      const exists = await client.query(`SELECT 1 FROM customers WHERE id = $1`, [id]);
+      if (exists.rowCount === 0) return "not_found" as const;
+
+      const active = await client.query(
+        `SELECT 1 FROM bookings
+          WHERE customer_id = $1 AND status IN ('pending','paid')
+            AND (end_ts IS NULL OR end_ts > now())
+          LIMIT 1`,
+        [id],
+      );
+      if ((active.rowCount ?? 0) > 0) return "has_active" as const;
+
+      await client.query(`DELETE FROM bookings WHERE customer_id = $1`, [id]);
+      await client.query(`DELETE FROM credit_batches WHERE customer_id = $1`, [id]);
+      await client.query(`DELETE FROM package_orders WHERE customer_id = $1`, [id]);
+      await client.query(
+        `DELETE FROM login_tokens WHERE email = (SELECT lower(email) FROM customers WHERE id = $1)`,
+        [id],
+      );
+      await client.query(`DELETE FROM customers WHERE id = $1`, [id]);
+      return "deleted" as const;
+    });
+
+    if (result === "not_found") {
+      return NextResponse.json({ error: "Klant niet gevonden." }, { status: 404 });
+    }
+    if (result === "has_active") {
+      return NextResponse.json(
+        { error: "Klant heeft nog een actieve of toekomstige boeking. Annuleer die eerst." },
+        { status: 409 },
+      );
+    }
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    console.error(`Klant ${id} verwijderen mislukt:`, err);
+    return NextResponse.json({ error: "Verwijderen mislukt." }, { status: 500 });
+  }
 }

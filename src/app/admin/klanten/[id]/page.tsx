@@ -54,6 +54,24 @@ export default function AdminCustomerDetail({ params }: { params: Promise<{ id: 
     load();
   }
 
+  async function removeCustomer() {
+    if (
+      !confirm(
+        "Deze klant volledig verwijderen? Ook de boekingshistorie, het uren-tegoed en pakket-orders worden gewist. Dit kan niet ongedaan worden gemaakt.",
+      )
+    )
+      return;
+    setBusy(true);
+    const res = await fetch(`/api/admin/customers/${id}`, { method: "DELETE" });
+    if (res.ok) {
+      window.location.href = "/admin/klanten";
+      return;
+    }
+    const data = (await res.json().catch(() => ({}))) as { error?: string };
+    alert(data.error ?? "Verwijderen mislukt.");
+    setBusy(false);
+  }
+
   if (!d || !d.profile) {
     return <div className="wrap"><p className="muted"><span className="spinner" /> &nbsp;Laden…</p></div>;
   }
@@ -131,6 +149,18 @@ export default function AdminCustomerDetail({ params }: { params: Promise<{ id: 
             </div>
           ))
         )}
+      </div>
+
+      {/* Verwijderen */}
+      <div className="card">
+        <p className="step-label">Klant verwijderen</p>
+        <p className="muted" style={{ fontSize: 14 }}>
+          Verwijdert de klant met alle historie. Kan alleen als er geen actieve of toekomstige
+          boeking meer is.
+        </p>
+        <button className="secondary" style={{ marginTop: 12 }} disabled={busy} onClick={removeCustomer}>
+          Klant definitief verwijderen
+        </button>
       </div>
     </div>
   );

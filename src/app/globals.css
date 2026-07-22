@@ -112,11 +112,10 @@ a {
   display: block;
   width: 128px;
   height: 48px;
-  background-color: #ffffff;
   background-image: url("/logo.png");
   background-position: center;
   background-repeat: no-repeat;
-  background-size: 108px auto;
+  background-size: contain;
   border: none;
   padding: 0;
   font-size: 0;
@@ -257,6 +256,8 @@ input[type="email"],
 input[type="tel"],
 input[type="date"],
 input[type="number"],
+input[type="password"],
+textarea,
 select {
   width: 100%;
   max-width: 100%;
@@ -280,7 +281,11 @@ input[type="date"] {
 input[type="date"]::-webkit-date-and-time-value {
   text-align: left;
 }
+textarea {
+  resize: vertical;
+}
 input:focus,
+textarea:focus,
 select:focus {
   outline: none;
   border-color: var(--yellow);

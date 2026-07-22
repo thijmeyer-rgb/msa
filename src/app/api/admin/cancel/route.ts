@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { query } from "@/lib/db";
-import { refundBookingCreditsIfAny } from "@/lib/bookings";
+import { refundBookingCreditsIfAny, removeCalendarEventIfAny } from "@/lib/bookings";
 
 const CancelSchema = z.object({ bookingId: z.string().uuid() });
 
@@ -29,5 +29,7 @@ export async function POST(request: Request) {
   }
   // Was dit een boeking met uren-tegoed? Geef de uren dan terug.
   await refundBookingCreditsIfAny(data.bookingId);
+  // Haal (indien gekoppeld) de afspraak uit de Google-agenda.
+  await removeCalendarEventIfAny(data.bookingId);
   return NextResponse.json({ ok: true });
 }

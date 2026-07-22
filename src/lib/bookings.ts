@@ -20,6 +20,60 @@ import { isSlotBookable, isDateWithinWindow } from "@/lib/availability";
 import { consumeCredits, grantCredits } from "@/lib/credits";
 import { validateDiscount, incrementDiscountUse } from "@/lib/discounts";
 import { isNukiEnabled, createKeypadCode } from "@/lib/nuki";
+import { isGcalEnabled, createCalendarEvent, deleteCalendarEvent } from "@/lib/gcal";
+
+/**
+ * Zet (indien Google Calendar actief is) de boeking als afspraak in de
+ * studio-agenda en bewaart het event-id voor annulering. Non-fataal.
+ */
+async function provisionCalendarEvent(
+  bookingId: string,
+  label: string,
+  start: Date,
+  end: Date,
+  customer: { name?: string; email?: string; phone?: string },
+): Promise<void> {
+  if (!isGcalEnabled()) return;
+  try {
+    const who = customer.name?.trim() || customer.email || "klant";
+    const eventId = await createCalendarEvent({
+      summary: `Studio verhuurd — ${who}`,
+      description: [
+        `Boeking via booking.muziekstudioalkmaar.nl`,
+        `Slot: ${label}`,
+        customer.name ? `Naam: ${customer.name}` : null,
+        customer.email ? `E-mail: ${customer.email}` : null,
+        customer.phone ? `Telefoon: ${customer.phone}` : null,
+        `Boeking-id: ${bookingId}`,
+      ]
+        .filter(Boolean)
+        .join("\n"),
+      start,
+      end,
+    });
+    if (eventId) {
+      await query(`UPDATE bookings SET google_event_id = $1 WHERE id = $2`, [eventId, bookingId]);
+    }
+  } catch (err) {
+    console.error(`⚠️ Google Calendar-event voor ${bookingId} mislukt:`, err);
+  }
+}
+
+/** Verwijdert (indien aanwezig) het agenda-event van een geannuleerde boeking. Non-fataal. */
+export async function removeCalendarEventIfAny(bookingId: string): Promise<void> {
+  try {
+    const rows = await query<{ google_event_id: string | null }>(
+      `SELECT google_event_id FROM bookings WHERE id = $1`,
+      [bookingId],
+    );
+    const eventId = rows[0]?.google_event_id;
+    if (eventId && (await deleteCalendarEvent(eventId))) {
+      await query(`UPDATE bookings SET google_event_id = NULL WHERE id = $1`, [bookingId]);
+    }
+  } catch (err) {
+    console.error(`⚠️ Google Calendar-event verwijderen voor ${bookingId} mislukt:`, err);
+  }
+}
 
 /**
  * Genereert (indien Nuki actief is) een keypad-toegangscode voor deze boeking,
@@ -244,6 +298,13 @@ export async function createBookingWithCredits(input: {
     daypartEnd(input.date, dp),
     slotLabel(input.daypart),
   );
+  await provisionCalendarEvent(
+    bookingId,
+    `${input.date} · ${slotLabel(input.daypart)}`,
+    daypartStart(input.date, dp),
+    daypartEnd(input.date, dp),
+    cust[0] ?? {},
+  );
   if (cust[0]?.email) {
     try {
       await sendBookingConfirmation({
@@ -323,6 +384,7 @@ export async function createFlexBookingWithCredits(input: {
     `SELECT name, email, phone FROM customers WHERE id = $1`,
     [input.customerId],
   );
+  await provisionCalendarEvent(bookingId, `${input.date} · ${label}`, start, end, cust[0] ?? {});
   if (cust[0]?.email) {
     try {
       await sendBookingConfirmation({
@@ -503,6 +565,13 @@ async function markBookingPaid(molliePaymentId: string): Promise<void> {
         daypartStart(result.booking_date, rdp),
         daypartEnd(result.booking_date, rdp),
         slotLabel(result.daypart),
+      );
+      await provisionCalendarEvent(
+        result.id,
+        `${result.booking_date} · ${slotLabel(result.daypart)}`,
+        daypartStart(result.booking_date, rdp),
+        daypartEnd(result.booking_date, rdp),
+        customer[0],
       );
       try {
         await sendBookingConfirmation({

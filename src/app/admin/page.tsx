@@ -96,7 +96,17 @@ export default function AdminPage() {
         <h1>Admin</h1>
       </div>
       <p className="tagline">
-        <a href="/admin/klanten">Klanten &amp; uren</a> · <a href="/admin/kortingen">Kortingscodes</a> · <a href="/admin/instellingen">Instellingen</a>
+        <a href="/admin/klanten">Klanten &amp; uren</a> · <a href="/admin/kortingen">Kortingscodes</a> · <a href="/admin/instellingen">Instellingen</a> ·{" "}
+        <a
+          href="/admin/login"
+          onClick={async (e) => {
+            e.preventDefault();
+            await fetch("/api/admin/auth", { method: "DELETE" });
+            window.location.href = "/admin/login";
+          }}
+        >
+          Uitloggen
+        </a>
       </p>
 
       <StatsOverview />
