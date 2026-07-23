@@ -19,7 +19,7 @@ import {
 import { isSlotBookable, isDateWithinWindow } from "@/lib/availability";
 import { consumeCredits, grantCredits } from "@/lib/credits";
 import { validateDiscount, incrementDiscountUse } from "@/lib/discounts";
-import { isNukiEnabled, createKeypadCode } from "@/lib/nuki";
+import { createKeypadCode } from "@/lib/nuki";
 import { hasOAuthCredentials, createCalendarEvent, deleteCalendarEvent } from "@/lib/gcal";
 
 /**
@@ -78,9 +78,12 @@ export async function removeCalendarEventIfAny(bookingId: string): Promise<void>
 }
 
 /**
- * Genereert (indien Nuki actief is) een keypad-toegangscode voor deze boeking,
- * geldig van 15 min vóór tot 15 min ná het dagdeel. Slaat de code op de boeking
+ * Genereert (indien Nuki is ingesteld) een keypad-toegangscode voor deze boeking,
+ * geldig van 15 min vóór tot 15 min ná het tijdvenster. Slaat de code op de boeking
  * op en geeft hem terug voor in de bevestigingsmail. Non-fataal.
+ *
+ * createKeypadCode geeft zelf null terug als Nuki nog niet is ingesteld.
+ * De naam moet kort blijven: Nuki staat maximaal 20 tekens toe.
  */
 async function provisionAccessCode(
   bookingId: string,
@@ -88,11 +91,21 @@ async function provisionAccessCode(
   until: Date,
   label: string,
 ): Promise<string | null> {
-  if (!isNukiEnabled()) return null;
   // 15 min speling rond het tijdvenster.
   const codeFrom = new Date(from.getTime() - 15 * 60000);
   const codeUntil = new Date(until.getTime() + 15 * 60000);
-  const pin = await createKeypadCode({ name: `MSA ${label}`, from: codeFrom, until: codeUntil });
+  // Compacte naam, bijv. "MSA 24-07 Avond" (past binnen Nuki's 20 tekens).
+  const dayMonth = new Intl.DateTimeFormat("nl-NL", {
+    timeZone: "Europe/Amsterdam",
+    day: "2-digit",
+    month: "2-digit",
+  }).format(from);
+  const shortSlot = label.split(" (")[0];
+  const pin = await createKeypadCode({
+    name: `MSA ${dayMonth} ${shortSlot}`,
+    from: codeFrom,
+    until: codeUntil,
+  });
   if (pin) {
     try {
       await query(`UPDATE bookings SET access_code = $1 WHERE id = $2`, [pin, bookingId]);

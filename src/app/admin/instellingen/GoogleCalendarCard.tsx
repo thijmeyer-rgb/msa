@@ -22,10 +22,19 @@ export default function GoogleCalendarCard() {
   const [savingCal, setSavingCal] = useState(false);
   const [msg, setMsg] = useState("");
 
+  const [loadError, setLoadError] = useState(false);
+
   const load = useCallback(async () => {
-    const res = await fetch("/api/admin/google/status", { cache: "no-store" });
-    setStatus(await res.json());
-    setLoading(false);
+    setLoadError(false);
+    try {
+      const res = await fetch("/api/admin/google/status", { cache: "no-store" });
+      if (!res.ok) throw new Error(String(res.status));
+      setStatus(await res.json());
+    } catch {
+      setLoadError(true);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -67,6 +76,13 @@ export default function GoogleCalendarCard() {
         <p className="muted">
           <span className="spinner" /> &nbsp;Laden…
         </p>
+      ) : loadError ? (
+        <>
+          <p className="error">Kon de status niet laden.</p>
+          <button className="secondary" onClick={load}>
+            Opnieuw proberen
+          </button>
+        </>
       ) : !status?.configured ? (
         <>
           <p className="muted" style={{ fontSize: 14, textTransform: "none", letterSpacing: 0 }}>

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import GoogleCalendarCard from "./GoogleCalendarCard";
+import NukiCard from "./NukiCard";
 
 export default function AdminSettingsPage() {
   const [gaId, setGaId] = useState("");
@@ -48,6 +49,8 @@ export default function AdminSettingsPage() {
       <p className="tagline"><a href="/admin">← Terug naar dashboard</a></p>
 
       <GoogleCalendarCard />
+
+      <NukiCard />
 
       <div className="card">
         <p className="step-label">Tracking</p>
