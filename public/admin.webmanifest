@@ -1,0 +1,43 @@
+{
+  "id": "/admin",
+  "name": "Muziekstudio Alkmaar — Beheer",
+  "short_name": "MSA Beheer",
+  "description": "Boekingen, klanten en instellingen van Muziekstudio Alkmaar.",
+  "start_url": "/admin",
+  "scope": "/admin",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0C0C0C",
+  "theme_color": "#0C0C0C",
+  "lang": "nl-NL",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Klanten & uren",
+      "url": "/admin/klanten"
+    },
+    {
+      "name": "Instellingen",
+      "url": "/admin/instellingen"
+    }
+  ]
+}

@@ -202,6 +202,21 @@ UPDATE bookings SET
       WHEN 'avond' THEN time '19:30' WHEN 'latenight' THEN time '23:45' END) AT TIME ZONE 'Europe/Amsterdam'
 WHERE start_ts IS NULL AND daypart IS NOT NULL;
 
+-- ═══════════════════════════════════════════════════════════════════════
+--  Push-meldingen (beheer-app): abonnementen per apparaat
+-- ═══════════════════════════════════════════════════════════════════════
+-- Eén rij per apparaat/browser waarop de eigenaar meldingen heeft aangezet.
+-- De endpoint-URL is uniek per abonnement en dient als sleutel. Verlopen
+-- abonnementen (404/410 van de pushdienst) worden automatisch opgeruimd.
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  endpoint        TEXT PRIMARY KEY,
+  p256dh          TEXT NOT NULL,   -- publieke sleutel van het apparaat
+  auth            TEXT NOT NULL,   -- authenticatiegeheim van het apparaat
+  label           TEXT,            -- bv. "iPhone van Thijmen"
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_success_at TIMESTAMPTZ
+);
+
 -- ★ Overlap-garantie: twee actieve boekingen mogen nooit in tijd overlappen
 --   (dagdeel én flex). Waterdicht op databaseniveau via een exclusion constraint.
 DO $$ BEGIN

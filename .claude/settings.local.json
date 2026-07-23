@@ -69,7 +69,10 @@
       "WebSearch",
       "Bash(curl -s -b c.txt http://localhost:3000/api/admin/nuki)",
       "Bash(curl -s -b c.txt -w \"\\\\n%{http_code}\\\\n\" -X POST http://localhost:3000/api/admin/nuki/test)",
-      "Bash(git ls-tree *)"
+      "Bash(git ls-tree *)",
+      "Bash(curl -s -b c.txt http://localhost:3000/admin)",
+      "Bash(curl -s http://localhost:3000/admin/login)",
+      "Bash(cd \"/Users/thijmenmeyer/Desktop/Claude Code/Booking\" && rm -f tsconfig.tsbuildinfo && lsof -ti:5433 | xargs kill 2>/dev/null; rm -f /tmp/msadb.log; node tests/verify-locking.mjs 2>&1 | tail -2; echo \"=== nog te committen ===\"; git status --short)"
     ]
   }
 }

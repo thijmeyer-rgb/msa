@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import GoogleCalendarCard from "./GoogleCalendarCard";
 import NukiCard from "./NukiCard";
+import PushCard from "./PushCard";
 
 export default function AdminSettingsPage() {
   const [gaId, setGaId] = useState("");
@@ -47,6 +48,8 @@ export default function AdminSettingsPage() {
         <h1>Instellingen</h1>
       </div>
       <p className="tagline"><a href="/admin">← Terug naar dashboard</a></p>
+
+      <PushCard />
 
       <GoogleCalendarCard />
 

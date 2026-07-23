@@ -2,6 +2,7 @@ import type { PoolClient } from "pg";
 import { withTransaction, query, isUniqueViolation, isExclusionViolation } from "@/lib/db";
 import { mollie, mollieAmount } from "@/lib/mollie";
 import { sendBookingConfirmation, sendAdminBookingNotification } from "@/lib/email";
+import { sendAdminPush } from "@/lib/push";
 import {
   DAYPART_BY_ID,
   PENDING_TTL_MINUTES,
@@ -114,6 +115,30 @@ async function provisionAccessCode(
     }
   }
   return pin;
+}
+
+/**
+ * Stuurt een push-melding naar de beheer-app ("Nieuwe boeking: …").
+ * Non-fataal: een boeking mag nooit stuklopen omdat een melding niet aankwam.
+ */
+async function pushBookingAlert(opts: {
+  customerName: string;
+  date: string;
+  label: string;
+  priceCents: number;
+  paidWithCredit?: boolean;
+}): Promise<void> {
+  try {
+    const [y, m, d] = opts.date.slice(0, 10).split("-");
+    const bedrag = opts.paidWithCredit ? "met uren-tegoed" : formatEuro(opts.priceCents);
+    await sendAdminPush({
+      title: "Nieuwe boeking",
+      body: `${opts.customerName} · ${d}-${m}-${y} · ${opts.label} · ${bedrag}`,
+      url: "/admin",
+    });
+  } catch (err) {
+    console.error("⚠️ Push-melding mislukt:", err);
+  }
 }
 
 export class SlotTakenError extends Error {
@@ -348,6 +373,13 @@ export async function createBookingWithCredits(input: {
   } catch (err) {
     console.error(`⚠️ Admin-notificatie (tegoed) voor ${bookingId} mislukt:`, err);
   }
+  await pushBookingAlert({
+    customerName: cust[0]?.name || "muzikant",
+    date: input.date,
+    label: slotLabel(input.daypart),
+    priceCents: dp.priceCents,
+    paidWithCredit: true,
+  });
 
   return { bookingId };
 }
@@ -428,6 +460,13 @@ export async function createFlexBookingWithCredits(input: {
   } catch (err) {
     console.error(`⚠️ Admin-notificatie (flex) voor ${bookingId} mislukt:`, err);
   }
+  await pushBookingAlert({
+    customerName: cust[0]?.name || "muzikant",
+    date: input.date,
+    label,
+    priceCents: 0,
+    paidWithCredit: true,
+  });
 
   return { bookingId };
 }
@@ -614,6 +653,12 @@ async function markBookingPaid(molliePaymentId: string): Promise<void> {
       } catch (err) {
         console.error(`⚠️ Admin-notificatie voor boeking ${result.id} mislukt:`, err);
       }
+      await pushBookingAlert({
+        customerName: customer[0].name,
+        date: result.booking_date,
+        label: slotLabel(result.daypart),
+        priceCents: result.price_cents - result.discount_cents,
+      });
     }
   }
 }
