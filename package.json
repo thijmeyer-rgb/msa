@@ -9,6 +9,11 @@
     "lint": "next lint",
     "db:migrate": "node src/db/migrate.mjs"
   },
+  "//overrides": "postcss en sharp komen als onderliggende pakketten van Next mee in een kwetsbare versie. Next werkt prima met de gepatchte versies, dus forceren we die hier (GHSA-qx2v-qp2m-jg93 en GHSA-f88m-g3jw-g9cj).",
+  "overrides": {
+    "postcss": "^8.5.10",
+    "sharp": "^0.35.0"
+  },
   "dependencies": {
     "@mollie/api-client": "^4.1.0",
     "next": "^15.5.4",

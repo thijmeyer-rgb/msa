@@ -72,7 +72,16 @@
       "Bash(git ls-tree *)",
       "Bash(curl -s -b c.txt http://localhost:3000/admin)",
       "Bash(curl -s http://localhost:3000/admin/login)",
-      "Bash(cd \"/Users/thijmenmeyer/Desktop/Claude Code/Booking\" && rm -f tsconfig.tsbuildinfo && lsof -ti:5433 | xargs kill 2>/dev/null; rm -f /tmp/msadb.log; node tests/verify-locking.mjs 2>&1 | tail -2; echo \"=== nog te committen ===\"; git status --short)"
+      "Bash(cd \"/Users/thijmenmeyer/Desktop/Claude Code/Booking\" && rm -f tsconfig.tsbuildinfo && lsof -ti:5433 | xargs kill 2>/dev/null; rm -f /tmp/msadb.log; node tests/verify-locking.mjs 2>&1 | tail -2; echo \"=== nog te committen ===\"; git status --short)",
+      "Bash(node -e *)",
+      "Bash(npm view *)",
+      "Bash(node --input-type=module -e ' *)",
+      "Bash(node scripts/generate-icons.mjs)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code} → %{redirect_url}\\\\n\" http://localhost:3000/admin)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" -X POST http://localhost:3000/api/admin/auth -H 'Content-Type: application/json' -d '{\"password\":\"fout\"}')",
+      "Bash(curl -s -c c.txt -o /dev/null -w \"%{http_code}\\\\n\" -X POST http://localhost:3000/api/admin/auth -H 'Content-Type: application/json' -d '{\"password\":\"studio-admin\"}')",
+      "Bash(curl -s -b c.txt -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:3000/api/admin/data)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" \"http://localhost:3000/api/availability?date=2026-07-24\")"
     ]
   }
 }
