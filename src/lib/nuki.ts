@@ -127,6 +127,25 @@ export async function listSmartlocks(token: string): Promise<Smartlock[]> {
   }
 }
 
+/**
+ * Aantal keypad-codes dat nu in het slot staat. Een Nuki Keypad kan er maar een
+ * beperkt aantal aan (Keypad 1: 100, Keypad 2: 200). Omdat we per boeking een
+ * code aanmaken en pas opruimen als hij verlopen is, laat dit zien hoe vol het
+ * zit. Null = onbekend (niet ingesteld of Nuki niet bereikbaar).
+ */
+export async function countKeypadCodes(): Promise<number | null> {
+  const cfg = await getNukiConfig();
+  if (!cfg) return null;
+  try {
+    const res = await nukiFetch(cfg.token, `/smartlock/${cfg.smartlockId}/auth`, { method: "GET" });
+    if (!res.ok) return null;
+    const auths = (await res.json()) as { type: number }[];
+    return auths.filter((a) => a.type === KEYPAD_CODE_TYPE).length;
+  } catch {
+    return null;
+  }
+}
+
 /** Bestaande keypad-PINs (om dubbele codes te voorkomen). */
 async function existingPins(token: string, smartlockId: string): Promise<Set<string>> {
   try {

@@ -6,6 +6,7 @@ import {
   saveNukiToken,
   saveNukiSmartlock,
   clearNukiConfig,
+  countKeypadCodes,
 } from "@/lib/nuki";
 
 export const dynamic = "force-dynamic";
@@ -18,12 +19,14 @@ export async function GET() {
   const token = await getNukiToken();
   const cfg = await getNukiConfig();
   const smartlocks = token ? await listSmartlocks(token) : [];
+  const codesInUse = cfg ? await countKeypadCodes() : null;
   return NextResponse.json({
     hasToken: Boolean(token),
     smartlockId: cfg?.smartlockId ?? "",
     configured: Boolean(cfg),
     smartlocks,
     tokenValid: token ? smartlocks.length > 0 : null,
+    codesInUse,
   });
 }
 

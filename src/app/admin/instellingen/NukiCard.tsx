@@ -12,6 +12,7 @@ interface Status {
   configured: boolean;
   smartlocks: Smartlock[];
   tokenValid: boolean | null;
+  codesInUse: number | null;
 }
 
 export default function NukiCard() {
@@ -159,6 +160,17 @@ export default function NukiCard() {
 
               {status.configured && (
                 <>
+                  {status.codesInUse !== null && (
+                    <p
+                      className={status.codesInUse >= 80 ? "error" : "muted"}
+                      style={{ marginTop: 14, fontSize: 14, textTransform: "none", letterSpacing: 0 }}
+                    >
+                      {status.codesInUse} code{status.codesInUse === 1 ? "" : "s"} in de keypad.
+                      {status.codesInUse >= 80
+                        ? " Let op: een Nuki Keypad kan er maximaal 100 (Keypad 2: 200). Zit hij vol, dan krijgen nieuwe boekingen geen code maar de gewone deurbel-instructie."
+                        : " Verlopen codes worden dagelijks automatisch opgeruimd."}
+                    </p>
+                  )}
                   <p className="muted" style={{ fontSize: 14, textTransform: "none", letterSpacing: 0, marginTop: 14 }}>
                     Klaar om te testen: maak een code aan die 15 minuten geldig is en probeer hem op
                     de keypad bij de deur.
